@@ -8,7 +8,13 @@ from sqlalchemy import Select, desc, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from vpn_rating_watcher.charts.service import HEATMAP_CHART_TYPE
-from vpn_rating_watcher.db.models import GeneratedChart, Snapshot, TelegramChat, Vpn, VpnSnapshotResult
+from vpn_rating_watcher.db.models import (
+    GeneratedChart,
+    Snapshot,
+    TelegramChat,
+    Vpn,
+    VpnSnapshotResult,
+)
 
 
 @dataclass(slots=True)
@@ -41,7 +47,9 @@ def upsert_telegram_chat(
     chat_type: str | None,
     title: str | None,
 ) -> TelegramChat:
-    stmt: Select[tuple[TelegramChat]] = select(TelegramChat).where(TelegramChat.chat_id == chat_id)
+    stmt: Select[tuple[TelegramChat]] = select(TelegramChat).where(
+        TelegramChat.chat_id == chat_id
+    )
     existing = session.execute(stmt).scalar_one_or_none()
     if existing:
         existing.chat_type = chat_type
@@ -86,7 +94,10 @@ def get_latest_chart(session: Session) -> ChartLookupResult | None:
     )
 
 
-def get_latest_chart_for_date(session: Session, chart_date: date) -> ChartLookupResult | None:
+def get_latest_chart_for_date(
+    session: Session,
+    chart_date: date,
+) -> ChartLookupResult | None:
     chart = session.execute(
         _latest_chart_query().where(GeneratedChart.chart_date == chart_date).limit(1)
     ).scalar_one_or_none()
@@ -99,11 +110,16 @@ def get_latest_chart_for_date(session: Session, chart_date: date) -> ChartLookup
     )
 
 
-def get_today_or_latest_chart(session: Session, *, today: date | None = None) -> ChartLookupResult | None:
+def get_today_or_latest_chart(
+    session: Session,
+    *,
+    today: date | None = None,
+) -> ChartLookupResult | None:
     resolved_today = today or datetime.now(tz=timezone.utc).date()
-    return get_latest_chart_for_date(session=session, chart_date=resolved_today) or get_latest_chart(
-        session=session
-    )
+    return get_latest_chart_for_date(
+        session=session,
+        chart_date=resolved_today,
+    ) or get_latest_chart(session=session)
 
 
 def get_last_snapshot_summary(session: Session) -> LastSnapshotSummary | None:
@@ -153,13 +169,18 @@ def format_last_snapshot_summary(summary: LastSnapshotSummary) -> str:
     lines = [
         "Latest snapshot:",
         f"Source: {summary.source_name}",
-        f"Fetched: {summary.fetched_at.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+        (
+            "Fetched: "
+            f"{summary.fetched_at.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
+        ),
         "Top 10:",
     ]
 
     for row in summary.top_rows:
         pct = row.score_pct * 100
-        lines.append(f"{row.rank_position}. {row.vpn_name} — {row.score}/{row.score_max} ({pct:.1f}%)")
+        lines.append(
+            f"{row.rank_position}. {row.vpn_name} — {row.score}/{row.score_max} ({pct:.1f}%)"
+        )
 
     if not summary.top_rows:
         lines.append("No VPN rows found in the latest snapshot.")
@@ -171,7 +192,13 @@ class TelegramBotService:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
 
-    def upsert_chat(self, *, chat_id: str, chat_type: str | None, title: str | None) -> None:
+    def upsert_chat(
+        self,
+        *,
+        chat_id: str,
+        chat_type: str | None,
+        title: str | None,
+    ) -> None:
         with self._session_factory() as session:
             upsert_telegram_chat(
                 session=session,

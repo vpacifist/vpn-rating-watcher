@@ -14,7 +14,13 @@ from vpn_rating_watcher.bot.service import (
 )
 from vpn_rating_watcher.charts.service import HEATMAP_CHART_TYPE
 from vpn_rating_watcher.db.base import Base
-from vpn_rating_watcher.db.models import GeneratedChart, Snapshot, TelegramChat, Vpn, VpnSnapshotResult
+from vpn_rating_watcher.db.models import (
+    GeneratedChart,
+    Snapshot,
+    TelegramChat,
+    Vpn,
+    VpnSnapshotResult,
+)
 
 
 def _session() -> Session:

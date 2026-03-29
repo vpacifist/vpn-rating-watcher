@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from vpn_rating_watcher.bot.service import TelegramBotService
 
+
 def _commands_text() -> str:
     return (
         "Available commands:\n"
@@ -50,9 +51,10 @@ def build_router(service: TelegramBotService) -> Router:
             await message.answer(error)
             return
         assert chart is not None
+        caption = f"Chart date: {chart.chart_date.isoformat() if chart.chart_date else 'unknown'}"
         await message.answer_photo(
             photo=FSInputFile(chart.file_path),
-            caption=f"Chart date: {chart.chart_date.isoformat() if chart.chart_date else 'unknown'}",
+            caption=caption,
         )
 
     @local_router.message(Command("chart"))
@@ -63,9 +65,11 @@ def build_router(service: TelegramBotService) -> Router:
             await message.answer(error)
             return
         assert chart is not None
+        chart_date_label = chart.chart_date.isoformat() if chart.chart_date else "unknown"
+        caption = f"Latest chart ({chart_date_label})"
         await message.answer_photo(
             photo=FSInputFile(chart.file_path),
-            caption=f"Latest chart ({chart.chart_date.isoformat() if chart.chart_date else 'unknown'})",
+            caption=caption,
         )
 
     @local_router.message(Command("last"))
