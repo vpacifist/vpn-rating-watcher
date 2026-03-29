@@ -9,7 +9,8 @@ Current implementation scope:
 - ✅ Idempotent save behavior (`no_change` on same latest hash)
 - ✅ Historical backfill import from manual CSV transcription
 - ✅ Historical heatmap chart generation (PNG)
-- ⛔ No Telegram posting yet
+- ✅ Telegram bot polling commands (`/start`, `/help`, `/today`, `/chart`, `/last`)
+- ⛔ No scheduled Telegram posting yet
 
 ## Local setup
 
@@ -78,6 +79,15 @@ Useful options:
 
 The command prints a structured JSON summary and persists chart metadata in `generated_chart`.
 
+Run Telegram bot polling:
+
+```bash
+vrw bot
+```
+
+The bot reads `TELEGRAM_BOT_TOKEN` from `.env`. If missing, `vrw bot` exits with a clear error.
+
+
 ## Historical CSV backfill format
 
 Use UTF-8 CSV with a header row.
@@ -122,3 +132,24 @@ GitHub Actions runs on every `push` and `pull_request`:
 - `pytest`
 
 CI scraper smoke test is deterministic: it uses static HTML with Playwright `page.set_content(...)` rather than the live site.
+
+## Telegram bot commands
+
+Set in `.env`:
+
+```env
+TELEGRAM_BOT_TOKEN=123456:your_token
+```
+
+Available bot commands:
+- `/start` and `/help`: short help text
+- `/today`: sends today's chart if available, otherwise latest chart overall
+- `/chart`: sends latest chart overall
+- `/last`: sends latest snapshot summary with source name, fetched time, and top 10 VPN scores
+
+Notes:
+- Incoming command chats are upserted into `telegram_chat` (`chat_id`, `chat_type`, `title`, `is_active`, `last_posted_date`).
+- Bot command handling is polling-based (`vrw bot`).
+- If chart metadata exists but the PNG is missing on disk, the bot replies with a clear error message.
+- Daily posting scheduler is intentionally not implemented yet.
+

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import date
 
 import typer
 
+from vpn_rating_watcher.bot.runner import run_polling
 from vpn_rating_watcher.charts.service import MAIN_LIVE_SOURCE_NAME, generate_historical_heatmap
+from vpn_rating_watcher.core.settings import get_settings
 from vpn_rating_watcher.db.persistence import get_latest_snapshot_summary, persist_scrape_result
 from vpn_rating_watcher.db.session import get_session_factory
 from vpn_rating_watcher.importers.csv_backfill import (
@@ -229,8 +232,14 @@ def generate_chart_command(
 
 @app.command("bot")
 def run_bot() -> None:
-    """Phase placeholder for Telegram bot polling/webhook runner."""
-    placeholders.not_implemented("bot")
+    """Run Telegram bot in polling mode."""
+    token = get_settings().telegram_bot_token
+    if not token:
+        typer.echo("Bot startup error: TELEGRAM_BOT_TOKEN is not set.")
+        raise typer.Exit(code=2)
+
+    session_factory = get_session_factory()
+    asyncio.run(run_polling(token=token, session_factory=session_factory))
 
 
 @app.command("post-daily")
