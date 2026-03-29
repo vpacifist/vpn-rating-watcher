@@ -5,7 +5,7 @@ import json
 import typer
 
 from vpn_rating_watcher.db.persistence import get_latest_snapshot_summary, persist_scrape_result
-from vpn_rating_watcher.db.session import SessionLocal
+from vpn_rating_watcher.db.session import get_session_factory
 from vpn_rating_watcher.jobs import placeholders
 from vpn_rating_watcher.scraper.service import scrape_once
 
@@ -41,7 +41,8 @@ def scrape_and_save_command(
         artifacts_dir=artifacts_dir,
         headless=headless,
     )
-    with SessionLocal() as session:
+    session_factory = get_session_factory()
+    with session_factory() as session:
         saved = persist_scrape_result(
             session=session, scrape_result=scrape_result, source_name=source_name
         )
@@ -69,7 +70,8 @@ def latest_snapshot_command(
     source_name: str = typer.Option("maximkatz", help="Source identifier to query."),
 ) -> None:
     """Print summary for the latest stored snapshot."""
-    with SessionLocal() as session:
+    session_factory = get_session_factory()
+    with session_factory() as session:
         summary = get_latest_snapshot_summary(session=session, source_name=source_name)
 
     if summary is None:

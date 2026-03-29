@@ -50,6 +50,12 @@ def _parse_checked_at(value: str | None) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
+def _ensure_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _artifacts(run_dir: str) -> tuple[str | None, str | None, str | None]:
     base = Path(run_dir)
     html_path = base / "rendered.html"
@@ -174,7 +180,7 @@ def get_latest_snapshot_summary(
         snapshot_id=latest.id,
         source_name=latest.source_name,
         source_url=latest.source_url,
-        fetched_at=latest.fetched_at,
+        fetched_at=_ensure_utc(latest.fetched_at),
         content_hash=latest.content_hash,
         row_count=int(row_count),
     )
