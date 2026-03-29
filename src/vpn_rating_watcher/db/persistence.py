@@ -77,6 +77,13 @@ def _get_latest_snapshot(session: Session, source_name: str) -> Snapshot | None:
     )
     return session.execute(stmt).scalar_one_or_none()
 
+def _get_snapshot_by_hash(session: Session, source_name: str, content_hash: str) -> Snapshot | None:
+    stmt: Select[tuple[Snapshot]] = select(Snapshot).where(
+        Snapshot.source_name == source_name,
+        Snapshot.content_hash == content_hash,
+    )
+    return session.execute(stmt).scalar_one_or_none()
+
 
 def _get_or_create_vpn(session: Session, row: NormalizedRow) -> tuple[Vpn, bool]:
     normalized_name = _normalize_vpn_name(row.vpn_name)
@@ -100,14 +107,18 @@ def persist_scrape_result(
     source_name: str = "maximkatz",
 ) -> PersistSnapshotResult:
     with session.begin():
-        latest = _get_latest_snapshot(session=session, source_name=source_name)
-        if latest and latest.content_hash == scrape_result.table_hash:
+        existing = _get_snapshot_by_hash(
+            session=session,
+            source_name=source_name,
+            content_hash=scrape_result.table_hash,
+        )
+        if existing:
             return PersistSnapshotResult(
                 status="no_change",
-                message="Latest snapshot already has this content hash",
+                message="Snapshot with this content hash already exists for source",
                 source_name=source_name,
                 content_hash=scrape_result.table_hash,
-                snapshot_id=latest.id,
+                snapshot_id=existing.id,
                 inserted_vpn_count=0,
                 inserted_result_count=0,
             )

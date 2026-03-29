@@ -7,6 +7,7 @@ Current implementation scope:
 - ✅ Deterministic normalization and content hash
 - ✅ Database persistence layer for snapshots and VPN row results
 - ✅ Idempotent save behavior (`no_change` on same latest hash)
+- ✅ Historical backfill import from manual CSV transcription
 - ⛔ No chart generation yet
 - ⛔ No Telegram posting yet
 
@@ -50,6 +51,37 @@ vrw latest-snapshot --source-name maximkatz
 ```
 
 If the latest snapshot for a source has the same content hash, `scrape-save` returns `status: "no_change"` and does not duplicate rows.
+
+Import historical data from CSV:
+
+```bash
+vrw import-csv --path examples/history_import.csv
+```
+
+## Historical CSV backfill format
+
+Use UTF-8 CSV with a header row.
+
+Required columns:
+- `snapshot_date` (ISO date, `YYYY-MM-DD`)
+- `vpn_name`
+- `checked_at_raw`
+- `result_raw` (for example `34/36` or `34 / 36`)
+
+Optional columns:
+- `price_raw`
+- `traffic_raw`
+- `devices_raw`
+- `details_url`
+
+Import behavior:
+- Rows are grouped into one logical snapshot per `snapshot_date`.
+- Imported snapshots use source name `csv_backfill` by default.
+- `result_raw` is parsed into `score`, `score_max`, and `score_pct`.
+- Snapshot content hash is deterministic and based on normalized imported rows.
+- Import is idempotent: rerunning the same CSV does not duplicate snapshots or rows.
+
+See sample file: `examples/history_import.csv`.
 
 ## Persistence schema
 
