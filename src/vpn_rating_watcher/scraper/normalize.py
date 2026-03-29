@@ -52,6 +52,7 @@ def normalize_row_payload(row: dict) -> NormalizedRow:
         raise ValueError("result_raw is empty")
 
     score, score_max, score_pct = parse_result(normalized["result_raw"])
+    normalized["result_raw"] = f"{score}/{score_max}"
     normalized["score"] = score
     normalized["score_max"] = score_max
     normalized["score_pct"] = score_pct
