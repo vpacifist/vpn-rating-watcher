@@ -6,6 +6,11 @@ import typer
 
 from vpn_rating_watcher.db.persistence import get_latest_snapshot_summary, persist_scrape_result
 from vpn_rating_watcher.db.session import get_session_factory
+from vpn_rating_watcher.importers.csv_backfill import (
+    CSV_BACKFILL_SOURCE_NAME,
+    CsvImportError,
+    import_csv_backfill,
+)
 from vpn_rating_watcher.jobs import placeholders
 from vpn_rating_watcher.scraper.service import scrape_once
 
@@ -97,9 +102,50 @@ def latest_snapshot_command(
 
 
 @app.command("import-csv")
-def import_csv(path: str) -> None:
-    """Phase placeholder for CSV backfill import job."""
-    placeholders.not_implemented(f"import-csv ({path})")
+def import_csv(
+    path: str = typer.Option(..., "--path", help="Path to historical CSV file."),
+    source_name: str = typer.Option(
+        CSV_BACKFILL_SOURCE_NAME,
+        "--source-name",
+        help="Source identifier for imported historical snapshots.",
+    ),
+) -> None:
+    """Import manually transcribed historical snapshots from CSV."""
+    session_factory = get_session_factory()
+    with session_factory() as session:
+        try:
+            summary = import_csv_backfill(session=session, path=path, source_name=source_name)
+        except CsvImportError as exc:
+            typer.echo(f"CSV validation error: {exc}")
+            raise typer.Exit(code=2) from exc
+
+    typer.echo(
+        json.dumps(
+            {
+                "status": "ok",
+                "path": summary.path,
+                "source_name": summary.source_name,
+                "total_snapshots": summary.total_snapshots,
+                "created_snapshots": summary.created_snapshots,
+                "skipped_snapshots": summary.skipped_snapshots,
+                "total_rows": summary.total_rows,
+                "results": [
+                    {
+                        "status": result.status,
+                        "message": result.message,
+                        "snapshot_id": result.snapshot_id,
+                        "content_hash": result.content_hash,
+                        "inserted_vpn_count": result.inserted_vpn_count,
+                        "inserted_result_count": result.inserted_result_count,
+                    }
+                    for result in summary.persisted
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+    )
 
 
 @app.command("chart")

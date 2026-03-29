@@ -1,0 +1,5 @@
+snapshot_date,vpn_name,checked_at_raw,result_raw,price_raw,traffic_raw,devices_raw,details_url
+2024-05-20,VPN Alpha,20.05.2024 12:00,34/36,€3.49/month,Unlimited,10,https://vpn.maximkatz.com/vpn/alpha
+2024-05-20,VPN Beta,20.05.2024 12:00,31 / 36,$4.99/month,100 GB,5,https://vpn.maximkatz.com/vpn/beta
+2024-06-03,VPN Alpha,03.06.2024 12:00,35/36,€3.49/month,Unlimited,10,https://vpn.maximkatz.com/vpn/alpha
+2024-06-03,VPN Beta,03.06.2024 12:00,32/36,$4.99/month,100 GB,5,https://vpn.maximkatz.com/vpn/beta
