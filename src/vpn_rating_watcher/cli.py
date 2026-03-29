@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 
 import typer
 
+from vpn_rating_watcher.charts.service import MAIN_LIVE_SOURCE_NAME, generate_historical_heatmap
 from vpn_rating_watcher.db.persistence import get_latest_snapshot_summary, persist_scrape_result
 from vpn_rating_watcher.db.session import get_session_factory
 from vpn_rating_watcher.importers.csv_backfill import (
@@ -148,10 +150,65 @@ def import_csv(
     )
 
 
-@app.command("chart")
-def chart() -> None:
-    """Phase placeholder for chart generation."""
-    placeholders.not_implemented("chart")
+@app.command("generate-chart")
+def generate_chart_command(
+    days: int | None = typer.Option(
+        30, "--days", help="Number of days ending at latest available date."
+    ),
+    from_date: date | None = typer.Option(  # noqa: B008
+        None, "--from", help="Start date (YYYY-MM-DD)."
+    ),
+    to_date: date | None = typer.Option(  # noqa: B008
+        None, "--to", help="End date (YYYY-MM-DD)."
+    ),
+    top_n: int | None = typer.Option(
+        None, "--top-n", help="Only include top N VPNs by latest score."
+    ),
+    source_name: str = typer.Option(
+        MAIN_LIVE_SOURCE_NAME,
+        "--source-name",
+        help='Snapshot source name. Use "mixed" to combine all sources.',
+    ),
+    output: str | None = typer.Option(
+        None, "--output", help="Custom output file path for PNG."
+    ),
+) -> None:
+    """Generate historical heatmap PNG and persist chart metadata."""
+    session_factory = get_session_factory()
+    with session_factory() as session:
+        try:
+            result = generate_historical_heatmap(
+                session=session,
+                source_name=source_name,
+                days=days,
+                from_date=from_date,
+                to_date=to_date,
+                top_n=top_n,
+                output=output,
+            )
+        except ValueError as exc:
+            typer.echo(f"Chart generation error: {exc}")
+            raise typer.Exit(code=2) from exc
+
+    typer.echo(
+        json.dumps(
+            {
+                "status": "ok",
+                "output_path": result.output_path,
+                "source_name": result.source_name,
+                "date_range": {
+                    "from": result.start_date.isoformat(),
+                    "to": result.end_date.isoformat(),
+                },
+                "vpn_count": result.vpn_count,
+                "day_count": result.day_count,
+                "chart_id": result.chart_id,
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+    )
 
 
 @app.command("bot")

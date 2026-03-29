@@ -8,7 +8,7 @@ Current implementation scope:
 - ✅ Database persistence layer for snapshots and VPN row results
 - ✅ Idempotent save behavior (`no_change` on same latest hash)
 - ✅ Historical backfill import from manual CSV transcription
-- ⛔ No chart generation yet
+- ✅ Historical heatmap chart generation (PNG)
 - ⛔ No Telegram posting yet
 
 ## Local setup
@@ -57,6 +57,26 @@ Import historical data from CSV:
 ```bash
 vrw import-csv --path examples/history_import.csv
 ```
+
+Generate historical heatmap chart (default last 30 days from latest available snapshot):
+
+```bash
+vrw generate-chart --days 30
+```
+
+Generate chart using explicit date range:
+
+```bash
+vrw generate-chart --from 2026-03-01 --to 2026-03-29
+```
+
+Useful options:
+- `--top-n 20` to keep only the top 20 VPN rows (sorted by latest score descending)
+- `--source-name csv_backfill` to chart only imported historical snapshots
+- `--source-name mixed` to combine all available sources
+- `--output artifacts/charts/custom.png` to customize destination path
+
+The command prints a structured JSON summary and persists chart metadata in `generated_chart`.
 
 ## Historical CSV backfill format
 
