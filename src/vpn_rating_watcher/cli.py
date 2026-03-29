@@ -19,6 +19,15 @@ from vpn_rating_watcher.scraper.service import scrape_once
 app = typer.Typer(help="VPN rating watcher CLI")
 
 
+def _parse_iso_date(value: str | None, flag_name: str) -> date | None:
+    if value is None:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"{flag_name} must be in YYYY-MM-DD format") from exc
+
+
 @app.command("scrape")
 def scrape_command(
     source_url: str = typer.Option("https://vpn.maximkatz.com/", help="Source URL to scrape."),
@@ -155,10 +164,10 @@ def generate_chart_command(
     days: int | None = typer.Option(
         30, "--days", help="Number of days ending at latest available date."
     ),
-    from_date: date | None = typer.Option(  # noqa: B008
+    from_date_raw: str | None = typer.Option(
         None, "--from", help="Start date (YYYY-MM-DD)."
     ),
-    to_date: date | None = typer.Option(  # noqa: B008
+    to_date_raw: str | None = typer.Option(
         None, "--to", help="End date (YYYY-MM-DD)."
     ),
     top_n: int | None = typer.Option(
@@ -174,6 +183,13 @@ def generate_chart_command(
     ),
 ) -> None:
     """Generate historical heatmap PNG and persist chart metadata."""
+    try:
+        from_date = _parse_iso_date(from_date_raw, "--from")
+        to_date = _parse_iso_date(to_date_raw, "--to")
+    except ValueError as exc:
+        typer.echo(f"Chart generation error: {exc}")
+        raise typer.Exit(code=2) from exc
+
     session_factory = get_session_factory()
     with session_factory() as session:
         try:

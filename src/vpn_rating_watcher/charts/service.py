@@ -8,7 +8,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import colormaps
-from sqlalchemy import Date, Select, and_, cast, desc, func, select
+from sqlalchemy import Select, and_, desc, func, select
 from sqlalchemy.orm import Session
 
 from vpn_rating_watcher.db.models import GeneratedChart, Snapshot, Vpn, VpnSnapshotResult
@@ -51,10 +51,15 @@ def _source_filter(source_name: str) -> bool:
 def get_max_snapshot_date(
     session: Session, source_name: str = MAIN_LIVE_SOURCE_NAME
 ) -> date | None:
-    stmt = select(func.max(cast(Snapshot.fetched_at, Date)))
+    stmt = select(func.max(func.date(Snapshot.fetched_at)))
     if _source_filter(source_name):
         stmt = stmt.where(Snapshot.source_name == source_name)
-    return session.execute(stmt).scalar_one_or_none()
+    raw_max = session.execute(stmt).scalar_one_or_none()
+    if not raw_max:
+        return None
+    if isinstance(raw_max, date):
+        return raw_max
+    return date.fromisoformat(str(raw_max))
 
 
 def resolve_date_range(
@@ -104,7 +109,9 @@ def query_daily_latest_scores(
     end_date: date,
     source_name: str,
 ) -> list[DailyScoreRow]:
-    snapshot_day = cast(Snapshot.fetched_at, Date)
+    snapshot_day = func.date(Snapshot.fetched_at)
+    start_day = start_date.isoformat()
+    end_day = end_date.isoformat()
     ranked = (
         select(
             Vpn.name.label("vpn_name"),
@@ -120,14 +127,14 @@ def query_daily_latest_scores(
         .select_from(VpnSnapshotResult)
         .join(Snapshot, Snapshot.id == VpnSnapshotResult.snapshot_id)
         .join(Vpn, Vpn.id == VpnSnapshotResult.vpn_id)
-        .where(and_(snapshot_day >= start_date, snapshot_day <= end_date))
+        .where(and_(snapshot_day >= start_day, snapshot_day <= end_day))
     )
 
     if _source_filter(source_name):
         ranked = ranked.where(Snapshot.source_name == source_name)
 
     ranked_subq = ranked.subquery()
-    stmt: Select[tuple[str, date, int]] = (
+    stmt: Select[tuple[str, str, int]] = (
         select(
             ranked_subq.c.vpn_name,
             ranked_subq.c.snapshot_date,
@@ -138,7 +145,15 @@ def query_daily_latest_scores(
     )
 
     return [
-        DailyScoreRow(vpn_name=vpn_name, snapshot_date=snapshot_date, score=score)
+        DailyScoreRow(
+            vpn_name=vpn_name,
+            snapshot_date=(
+                snapshot_date
+                if isinstance(snapshot_date, date)
+                else date.fromisoformat(str(snapshot_date))
+            ),
+            score=score,
+        )
         for vpn_name, snapshot_date, score in session.execute(stmt).all()
     ]
 
