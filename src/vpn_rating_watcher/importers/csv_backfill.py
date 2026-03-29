@@ -135,7 +135,12 @@ def parse_csv_backfill(path: str | Path) -> list[ScrapeResult]:
 
     scrape_results: list[ScrapeResult] = []
     for snapshot_date, rows in grouped.items():
-        fetched_at = datetime(snapshot_date.year, snapshot_date.month, snapshot_date.day, tzinfo=UTC)
+        fetched_at = datetime(
+            snapshot_date.year,
+            snapshot_date.month,
+            snapshot_date.day,
+            tzinfo=UTC,
+        )
         table_hash = _build_snapshot_hash(snapshot_date=snapshot_date, rows=rows)
         scrape_results.append(
             ScrapeResult(
