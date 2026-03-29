@@ -17,6 +17,9 @@ class Settings(BaseSettings):
 
     telegram_bot_token: str | None = Field(default=None, alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str | None = Field(default=None, alias="TELEGRAM_CHAT_ID")
+    telegram_default_chat_ids: str | None = Field(
+        default=None, alias="TELEGRAM_DEFAULT_CHAT_IDS"
+    )
 
     scrape_times_utc: str = Field(default="00:00,06:00,12:00,18:00", alias="SCRAPE_TIMES_UTC")
     daily_post_time_utc: str = Field(default="19:00", alias="DAILY_POST_TIME_UTC")

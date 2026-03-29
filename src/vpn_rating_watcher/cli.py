@@ -16,7 +16,7 @@ from vpn_rating_watcher.importers.csv_backfill import (
     CsvImportError,
     import_csv_backfill,
 )
-from vpn_rating_watcher.jobs import placeholders
+from vpn_rating_watcher.jobs.daily_telegram_post import run_daily_posting_job
 from vpn_rating_watcher.scraper.service import scrape_once
 
 app = typer.Typer(help="VPN rating watcher CLI")
@@ -244,5 +244,30 @@ def run_bot() -> None:
 
 @app.command("post-daily")
 def post_daily() -> None:
-    """Phase placeholder for daily Telegram posting job."""
-    placeholders.not_implemented("post-daily")
+    """Post today's chart to active Telegram chats at most once per day."""
+    settings = get_settings()
+    if not settings.telegram_bot_token:
+        typer.echo("Daily posting error: TELEGRAM_BOT_TOKEN is not set.")
+        raise typer.Exit(code=2)
+
+    session_factory = get_session_factory()
+    result = run_daily_posting_job(
+        session_factory=session_factory,
+        token=settings.telegram_bot_token,
+        default_chat_ids_raw=settings.telegram_default_chat_ids,
+    )
+    typer.echo(
+        json.dumps(
+            {
+                "status": result.status,
+                "message": result.message,
+                "chart_date": result.chart_date.isoformat() if result.chart_date else None,
+                "active_chat_count": result.active_chat_count,
+                "posted_count": result.posted_count,
+                "skipped_count": result.skipped_count,
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+    )
