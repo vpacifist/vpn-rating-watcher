@@ -7,7 +7,6 @@ from pathlib import Path
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib import colormaps
 from sqlalchemy import Select, and_, desc, func, select
 from sqlalchemy.orm import Session
 
@@ -17,7 +16,7 @@ matplotlib.use("Agg")
 
 MAIN_LIVE_SOURCE_NAME = "maximkatz"
 MIXED_SOURCE_NAME = "mixed"
-HEATMAP_CHART_TYPE = "historical_heatmap"
+LINE_CHART_TYPE = "historical_line_chart"
 
 
 @dataclass(slots=True)
@@ -165,23 +164,20 @@ def _build_dates(start_date: date, end_date: date) -> list[date]:
     return dates
 
 
-def _output_path(
-    output: str | None,
-    source_name: str,
-    start_date: date,
-    end_date: date,
-) -> Path:
+def _output_path(output: str | None, source_name: str, start_date: date, end_date: date) -> Path:
     if output:
         path = Path(output)
     else:
-        filename = f"heatmap_{source_name}_{start_date.isoformat()}_{end_date.isoformat()}.png"
+        filename = f"linechart_{source_name}_{start_date.isoformat()}_{end_date.isoformat()}.png"
         path = Path("artifacts/charts") / filename
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def _matrix_from_rows(
-    rows: list[DailyScoreRow], dates: list[date], top_n: int | None
+    rows: list[DailyScoreRow],
+    dates: list[date],
+    top_n: int | None,
 ) -> tuple[np.ndarray, list[str]]:
     if top_n is not None and top_n <= 0:
         raise ValueError("--top-n must be greater than zero")
@@ -208,7 +204,18 @@ def _matrix_from_rows(
     return matrix, vpn_names
 
 
-def _render_heatmap(
+def _effective_chart_dates(
+    rows: list[DailyScoreRow], *, fallback_start: date, fallback_end: date
+) -> list[date]:
+    if not rows:
+        return _build_dates(start_date=fallback_start, end_date=fallback_end)
+
+    first_data_date = min(row.snapshot_date for row in rows)
+    last_data_date = max(row.snapshot_date for row in rows)
+    return _build_dates(start_date=first_data_date, end_date=last_data_date)
+
+
+def _render_line_chart(
     *,
     matrix: np.ndarray,
     vpn_names: list[str],
@@ -223,42 +230,42 @@ def _render_heatmap(
     fig.patch.set_facecolor("#0f111a")
     ax.set_facecolor("#0f111a")
 
-    cmap = colormaps["viridis"].copy()
-    cmap.set_bad(color="#2f3542")
-
-    im = ax.imshow(matrix, aspect="auto", interpolation="nearest", cmap=cmap)
-
     ax.set_xticks(np.arange(len(dates)))
-    ax.set_xticklabels([day.isoformat() for day in dates], rotation=45, ha="right", color="white")
-    ax.set_yticks(np.arange(len(vpn_names)))
-    ax.set_yticklabels(vpn_names, color="white")
+    ax.set_xticklabels(
+        [day.isoformat() for day in dates], rotation=45, ha="right", color="white"
+    )
+
+    x_values = np.arange(len(dates))
+    for idx, vpn_name in enumerate(vpn_names):
+        ax.plot(x_values, matrix[idx], marker="o", linewidth=1.8, markersize=3, label=vpn_name)
 
     ax.set_xlabel("Date", color="white")
-    ax.set_ylabel("VPN", color="white")
+    ax.set_ylabel("Score", color="white")
+    ax.set_ylim(0, 36)
 
     generated_at = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     ax.set_title(
-        f"VPN Historical Scores Heatmap ({source_name})\nGenerated: {generated_at}",
+        f"VPN Historical Scores ({source_name})\nGenerated: {generated_at}",
         color="white",
         fontsize=12,
         pad=14,
     )
 
-    cbar = fig.colorbar(im, ax=ax)
-    cbar.set_label("Score (numerator from result_raw)", color="white")
-    cbar.ax.yaxis.set_tick_params(color="white")
-    plt.setp(cbar.ax.get_yticklabels(), color="white")
-
     for spine in ax.spines.values():
         spine.set_color("#7f8c8d")
 
+    legend = ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), frameon=False, fontsize=8)
+    for text in legend.get_texts():
+        text.set_color("white")
+
+    ax.grid(True, color="#3b3f4a", alpha=0.4, linewidth=0.7)
     ax.tick_params(colors="white")
     fig.tight_layout()
     fig.savefig(output_path, facecolor=fig.get_facecolor(), bbox_inches="tight")
     plt.close(fig)
 
 
-def generate_historical_heatmap(
+def generate_historical_line_chart(
     session: Session,
     *,
     source_name: str = MAIN_LIVE_SOURCE_NAME,
@@ -275,12 +282,16 @@ def generate_historical_heatmap(
         to_date=to_date,
         source_name=source_name,
     )
-    dates = _build_dates(start_date=date_range.start_date, end_date=date_range.end_date)
     rows = query_daily_latest_scores(
         session=session,
         start_date=date_range.start_date,
         end_date=date_range.end_date,
         source_name=source_name,
+    )
+    dates = _effective_chart_dates(
+        rows,
+        fallback_start=date_range.start_date,
+        fallback_end=date_range.end_date,
     )
 
     matrix, vpn_names = _matrix_from_rows(rows=rows, dates=dates, top_n=top_n)
@@ -291,7 +302,7 @@ def generate_historical_heatmap(
         end_date=date_range.end_date,
     )
 
-    _render_heatmap(
+    _render_line_chart(
         matrix=matrix,
         vpn_names=vpn_names,
         dates=dates,
@@ -301,7 +312,7 @@ def generate_historical_heatmap(
 
     chart = GeneratedChart(
         chart_date=date_range.end_date,
-        chart_type=HEATMAP_CHART_TYPE,
+        chart_type=LINE_CHART_TYPE,
         file_path=str(output_path),
     )
     session.add(chart)
@@ -317,3 +328,6 @@ def generate_historical_heatmap(
         day_count=len(dates),
         chart_id=chart.id,
     )
+
+
+generate_historical_heatmap = generate_historical_line_chart

@@ -8,7 +8,7 @@ Current implementation scope:
 - ✅ Database persistence layer for snapshots and VPN row results
 - ✅ Idempotent save behavior (`no_change` on same latest hash)
 - ✅ Historical backfill import from manual CSV transcription
-- ✅ Historical heatmap chart generation (PNG)
+- ✅ Historical multi-line score chart generation (PNG)
 - ✅ Telegram bot polling commands (`/start`, `/help`, `/today`, `/chart`, `/last`)
 - ✅ Daily Telegram posting job command (`vrw post-daily`)
 - ✅ Railway-ready deployment and scheduler wiring documentation
@@ -60,7 +60,7 @@ Import historical data from CSV:
 vrw import-csv --path examples/history_import.csv
 ```
 
-Generate historical heatmap chart (default last 30 days from latest available snapshot):
+Generate historical score line chart (default last 30 days from latest available snapshot):
 
 ```bash
 vrw generate-chart --days 30

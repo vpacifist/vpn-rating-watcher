@@ -6,7 +6,7 @@ from pathlib import Path
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from vpn_rating_watcher.charts.service import HEATMAP_CHART_TYPE
+from vpn_rating_watcher.charts.service import LINE_CHART_TYPE
 from vpn_rating_watcher.db.base import Base
 from vpn_rating_watcher.db.models import GeneratedChart, TelegramChat
 from vpn_rating_watcher.jobs.daily_telegram_post import (
@@ -36,7 +36,7 @@ def test_post_daily_is_idempotent_for_same_day(tmp_path: Path) -> None:
         session.add(
             GeneratedChart(
                 chart_date=date(2026, 3, 29),
-                chart_type=HEATMAP_CHART_TYPE,
+                chart_type=LINE_CHART_TYPE,
                 file_path=str(chart_path),
             )
         )
@@ -79,7 +79,7 @@ def test_post_daily_skips_inactive_chats(tmp_path: Path) -> None:
         session.add(
             GeneratedChart(
                 chart_date=date(2026, 3, 29),
-                chart_type=HEATMAP_CHART_TYPE,
+                chart_type=LINE_CHART_TYPE,
                 file_path=str(chart_path),
             )
         )
