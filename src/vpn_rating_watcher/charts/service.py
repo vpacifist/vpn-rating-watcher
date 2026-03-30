@@ -110,8 +110,6 @@ def query_daily_latest_scores(
     source_name: str,
 ) -> list[DailyScoreRow]:
     snapshot_day = func.date(Snapshot.fetched_at)
-    start_day = start_date.isoformat()
-    end_day = end_date.isoformat()
     ranked = (
         select(
             Vpn.name.label("vpn_name"),
@@ -127,7 +125,7 @@ def query_daily_latest_scores(
         .select_from(VpnSnapshotResult)
         .join(Snapshot, Snapshot.id == VpnSnapshotResult.snapshot_id)
         .join(Vpn, Vpn.id == VpnSnapshotResult.vpn_id)
-        .where(and_(snapshot_day >= start_day, snapshot_day <= end_day))
+        .where(and_(snapshot_day >= start_date, snapshot_day <= end_date))
     )
 
     if _source_filter(source_name):
