@@ -11,7 +11,7 @@ Current implementation scope:
 - ✅ Historical heatmap chart generation (PNG)
 - ✅ Telegram bot polling commands (`/start`, `/help`, `/today`, `/chart`, `/last`)
 - ✅ Daily Telegram posting job command (`vrw post-daily`)
-- ⛔ No scheduler wiring yet (cron/Railway not implemented in this phase)
+- ✅ Railway-ready deployment and scheduler wiring documentation
 
 ## Local setup
 
@@ -149,6 +149,69 @@ GitHub Actions runs on every `push` and `pull_request`:
 
 CI scraper smoke test is deterministic: it uses static HTML with Playwright `page.set_content(...)` rather than the live site.
 
+## Railway deployment
+
+This repository includes a Railway-ready `Dockerfile` and `railway.json`.
+
+### 1) Create services/jobs
+
+Use one repo and create three Railway services:
+
+1. **Bot service** (long-running worker)
+   - Start command: `vrw bot`
+2. **Scraper cron job**
+   - Start command: `vrw scrape-save`
+   - Schedule: `0 */6 * * *` (4 times/day, every 6 hours UTC)
+3. **Daily posting cron job**
+   - Start command: `vrw post-daily`
+   - Schedule: `0 19 * * *` (1 time/day, 19:00 UTC)
+
+Railway cron schedules are configured in the Railway UI per service/job.
+
+### 2) Attach PostgreSQL
+
+1. Add a Railway PostgreSQL service.
+2. Reference its connection string in `DATABASE_URL` for each service.
+3. Run migrations before first production run:
+
+```bash
+alembic upgrade head
+```
+
+### 3) Set environment variables
+
+Set these in Railway for all services unless noted:
+
+- `APP_ENV=production`
+- `APP_LOG_LEVEL=INFO`
+- `DATABASE_URL=<railway postgres url>`
+- `SOURCE_URL=https://vpn.maximkatz.com/`
+- `SOURCE_TIMEZONE=UTC`
+- `TELEGRAM_BOT_TOKEN=<required for bot and post-daily>`
+- `TELEGRAM_DEFAULT_CHAT_IDS=<optional comma-separated chat IDs>`
+
+Optional scheduler metadata vars (informational defaults in app):
+
+- `SCRAPE_TIMES_UTC=00:00,06:00,12:00,18:00`
+- `DAILY_POST_TIME_UTC=19:00`
+
+### 4) Playwright dependencies on Railway
+
+The included Docker image installs Chromium and required system libraries with:
+
+```bash
+python -m playwright install --with-deps chromium
+```
+
+No extra apt packages are needed in Railway when using this Dockerfile.
+
+### 5) Runtime behavior and env-var failure boundaries
+
+- `vrw bot` requires `TELEGRAM_BOT_TOKEN` and `DATABASE_URL`.
+- `vrw scrape-save` requires `DATABASE_URL` (and browser dependencies).
+- `vrw post-daily` requires `DATABASE_URL` and `TELEGRAM_BOT_TOKEN`.
+- `vrw scrape` can run without DB credentials.
+
 ## Telegram bot commands
 
 Set in `.env`:
@@ -167,4 +230,4 @@ Notes:
 - Incoming command chats are upserted into `telegram_chat` (`chat_id`, `chat_type`, `title`, `is_active`, `last_posted_date`).
 - Bot command handling is polling-based (`vrw bot`).
 - If chart metadata exists but the PNG is missing on disk, the bot replies with a clear error message.
-- Daily posting scheduler is intentionally not implemented yet; use `vrw post-daily` from external scheduler later.
+- Use Railway cron jobs (documented above) to run `vrw scrape-save` and `vrw post-daily`.
