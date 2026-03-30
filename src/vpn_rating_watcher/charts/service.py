@@ -22,7 +22,7 @@ LINE_CHART_TYPE = "historical_line_chart"
 @dataclass(slots=True)
 class DailyScoreRow:
     vpn_name: str
-    snapshot_date: date
+    point_date: date
     score: int
 
 
@@ -47,10 +47,19 @@ def _source_filter(source_name: str) -> bool:
     return source_name != MIXED_SOURCE_NAME
 
 
-def get_max_snapshot_date(
+def _effective_row_date():
+    """Return the chart grouping date for a row.
+
+    Fallback behavior: when row-level checked_at is missing, fallback to Snapshot.fetched_at.
+    """
+    return func.coalesce(func.date(VpnSnapshotResult.checked_at), func.date(Snapshot.fetched_at))
+
+
+def get_max_point_date(
     session: Session, source_name: str = MAIN_LIVE_SOURCE_NAME
 ) -> date | None:
-    stmt = select(func.max(func.date(Snapshot.fetched_at)))
+    effective_row_date = _effective_row_date()
+    stmt = select(func.max(effective_row_date)).select_from(VpnSnapshotResult).join(Snapshot)
     if _source_filter(source_name):
         stmt = stmt.where(Snapshot.source_name == source_name)
     raw_max = session.execute(stmt).scalar_one_or_none()
@@ -75,7 +84,7 @@ def resolve_date_range(
     if days is not None:
         if days <= 0:
             raise ValueError("--days must be greater than zero")
-        end_date = get_max_snapshot_date(
+        end_date = get_max_point_date(
             session=session, source_name=source_name
         ) or datetime.now(tz=timezone.utc).date()
         start_date = end_date - timedelta(days=days - 1)
@@ -108,15 +117,15 @@ def query_daily_latest_scores(
     end_date: date,
     source_name: str,
 ) -> list[DailyScoreRow]:
-    snapshot_day = func.date(Snapshot.fetched_at)
+    effective_row_date = _effective_row_date()
     ranked = (
         select(
             Vpn.name.label("vpn_name"),
-            snapshot_day.label("snapshot_date"),
+            effective_row_date.label("point_date"),
             VpnSnapshotResult.score.label("score"),
             func.row_number()
             .over(
-                partition_by=(VpnSnapshotResult.vpn_id, snapshot_day),
+                partition_by=(VpnSnapshotResult.vpn_id, effective_row_date),
                 order_by=(desc(Snapshot.fetched_at), desc(Snapshot.id), desc(VpnSnapshotResult.id)),
             )
             .label("row_num"),
@@ -124,7 +133,7 @@ def query_daily_latest_scores(
         .select_from(VpnSnapshotResult)
         .join(Snapshot, Snapshot.id == VpnSnapshotResult.snapshot_id)
         .join(Vpn, Vpn.id == VpnSnapshotResult.vpn_id)
-        .where(and_(snapshot_day >= start_date, snapshot_day <= end_date))
+        .where(and_(effective_row_date >= start_date, effective_row_date <= end_date))
     )
 
     if _source_filter(source_name):
@@ -134,24 +143,24 @@ def query_daily_latest_scores(
     stmt: Select[tuple[str, str, int]] = (
         select(
             ranked_subq.c.vpn_name,
-            ranked_subq.c.snapshot_date,
+            ranked_subq.c.point_date,
             ranked_subq.c.score,
         )
         .where(ranked_subq.c.row_num == 1)
-        .order_by(ranked_subq.c.vpn_name.asc(), ranked_subq.c.snapshot_date.asc())
+        .order_by(ranked_subq.c.vpn_name.asc(), ranked_subq.c.point_date.asc())
     )
 
     return [
         DailyScoreRow(
             vpn_name=vpn_name,
-            snapshot_date=(
-                snapshot_date
-                if isinstance(snapshot_date, date)
-                else date.fromisoformat(str(snapshot_date))
+            point_date=(
+                point_date
+                if isinstance(point_date, date)
+                else date.fromisoformat(str(point_date))
             ),
             score=score,
         )
-        for vpn_name, snapshot_date, score in session.execute(stmt).all()
+        for vpn_name, point_date, score in session.execute(stmt).all()
     ]
 
 
@@ -196,7 +205,7 @@ def _matrix_from_rows(
 
     for row in rows:
         vpn_idx = vpn_to_idx.get(row.vpn_name)
-        date_idx = date_to_idx.get(row.snapshot_date)
+        date_idx = date_to_idx.get(row.point_date)
         if vpn_idx is None or date_idx is None:
             continue
         matrix[vpn_idx, date_idx] = row.score
@@ -210,8 +219,8 @@ def _effective_chart_dates(
     if not rows:
         return _build_dates(start_date=fallback_start, end_date=fallback_end)
 
-    first_data_date = min(row.snapshot_date for row in rows)
-    last_data_date = max(row.snapshot_date for row in rows)
+    first_data_date = min(row.point_date for row in rows)
+    last_data_date = max(row.point_date for row in rows)
     return _build_dates(start_date=first_data_date, end_date=last_data_date)
 
 

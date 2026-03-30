@@ -12,6 +12,7 @@ from vpn_rating_watcher.charts.service import (
     _compute_label_positions,
     _effective_chart_dates,
     _matrix_from_rows,
+    get_max_point_date,
     query_daily_latest_scores,
 )
 from vpn_rating_watcher.db.base import Base
@@ -106,6 +107,98 @@ def test_query_daily_latest_scores_uses_latest_snapshot_per_day() -> None:
 
         assert len(rows) == 1
         assert rows[0].score == 35
+
+
+def test_query_daily_latest_scores_groups_by_checked_at_date() -> None:
+    with _session() as session:
+        vpn = Vpn(name="VPN A", normalized_name="vpn a")
+        session.add(vpn)
+        session.flush()
+
+        snapshot = Snapshot(
+            source_name="maximkatz",
+            source_url="https://vpn.maximkatz.com/",
+            fetched_at=datetime(2026, 3, 30, 8, 0, tzinfo=timezone.utc),
+            content_hash="hash-checked",
+            raw_payload_json={},
+        )
+        session.add(snapshot)
+        session.flush()
+
+        session.add(
+            VpnSnapshotResult(
+                snapshot_id=snapshot.id,
+                vpn_id=vpn.id,
+                rank_position=1,
+                checked_at=datetime(2026, 3, 29, 23, 30, tzinfo=timezone.utc),
+                checked_at_raw="29.03.2026 23:30",
+                result_raw="34/36",
+                score=34,
+                score_max=36,
+                score_pct=34 / 36,
+                price_raw=None,
+                traffic_raw=None,
+                devices_raw=None,
+                details_url=None,
+            )
+        )
+        session.commit()
+
+        rows = query_daily_latest_scores(
+            session=session,
+            start_date=date(2026, 3, 29),
+            end_date=date(2026, 3, 29),
+            source_name="maximkatz",
+        )
+
+        assert len(rows) == 1
+        assert rows[0].point_date == date(2026, 3, 29)
+
+
+def test_query_daily_latest_scores_falls_back_to_fetched_at_when_checked_at_missing() -> None:
+    with _session() as session:
+        vpn = Vpn(name="VPN A", normalized_name="vpn a")
+        session.add(vpn)
+        session.flush()
+
+        snapshot = Snapshot(
+            source_name="maximkatz",
+            source_url="https://vpn.maximkatz.com/",
+            fetched_at=datetime(2026, 3, 30, 8, 0, tzinfo=timezone.utc),
+            content_hash="hash-fallback",
+            raw_payload_json={},
+        )
+        session.add(snapshot)
+        session.flush()
+
+        session.add(
+            VpnSnapshotResult(
+                snapshot_id=snapshot.id,
+                vpn_id=vpn.id,
+                rank_position=1,
+                checked_at=None,
+                checked_at_raw=None,
+                result_raw="33/36",
+                score=33,
+                score_max=36,
+                score_pct=33 / 36,
+                price_raw=None,
+                traffic_raw=None,
+                devices_raw=None,
+                details_url=None,
+            )
+        )
+        session.commit()
+
+        rows = query_daily_latest_scores(
+            session=session,
+            start_date=date(2026, 3, 30),
+            end_date=date(2026, 3, 30),
+            source_name="maximkatz",
+        )
+
+        assert len(rows) == 1
+        assert rows[0].point_date == date(2026, 3, 30)
 
 
 def test_query_daily_latest_scores_filters_source_name() -> None:
@@ -207,10 +300,48 @@ def test_query_daily_latest_scores_binds_date_params_for_postgresql() -> None:
     assert end.isoformat() not in compiled.params.values()
 
 
+def test_get_max_point_date_uses_checked_at_date() -> None:
+    with _session() as session:
+        vpn = Vpn(name="VPN A", normalized_name="vpn a")
+        session.add(vpn)
+        session.flush()
+
+        snapshot = Snapshot(
+            source_name="maximkatz",
+            source_url="https://vpn.maximkatz.com/",
+            fetched_at=datetime(2026, 3, 30, 8, 0, tzinfo=timezone.utc),
+            content_hash="hash-max-date",
+            raw_payload_json={},
+        )
+        session.add(snapshot)
+        session.flush()
+
+        session.add(
+            VpnSnapshotResult(
+                snapshot_id=snapshot.id,
+                vpn_id=vpn.id,
+                rank_position=1,
+                checked_at=datetime(2026, 3, 29, 23, 30, tzinfo=timezone.utc),
+                checked_at_raw="29.03.2026 23:30",
+                result_raw="34/36",
+                score=34,
+                score_max=36,
+                score_pct=34 / 36,
+                price_raw=None,
+                traffic_raw=None,
+                devices_raw=None,
+                details_url=None,
+            )
+        )
+        session.commit()
+
+        assert get_max_point_date(session=session) == date(2026, 3, 29)
+
+
 def test_effective_chart_dates_start_at_first_data_date() -> None:
     rows = [
-        DailyScoreRow(vpn_name="VPN A", snapshot_date=date(2026, 3, 10), score=30),
-        DailyScoreRow(vpn_name="VPN A", snapshot_date=date(2026, 3, 12), score=31),
+        DailyScoreRow(vpn_name="VPN A", point_date=date(2026, 3, 10), score=30),
+        DailyScoreRow(vpn_name="VPN A", point_date=date(2026, 3, 12), score=31),
     ]
 
     dates = _effective_chart_dates(
@@ -226,11 +357,11 @@ def test_effective_chart_dates_start_at_first_data_date() -> None:
 def test_matrix_from_rows_keeps_missing_dates_as_gaps() -> None:
     dates = [date(2026, 3, 10), date(2026, 3, 11), date(2026, 3, 12)]
     rows = [
-        DailyScoreRow(vpn_name="VPN A", snapshot_date=date(2026, 3, 10), score=30),
-        DailyScoreRow(vpn_name="VPN A", snapshot_date=date(2026, 3, 12), score=31),
-        DailyScoreRow(vpn_name="VPN B", snapshot_date=date(2026, 3, 10), score=35),
-        DailyScoreRow(vpn_name="VPN B", snapshot_date=date(2026, 3, 11), score=36),
-        DailyScoreRow(vpn_name="VPN B", snapshot_date=date(2026, 3, 12), score=34),
+        DailyScoreRow(vpn_name="VPN A", point_date=date(2026, 3, 10), score=30),
+        DailyScoreRow(vpn_name="VPN A", point_date=date(2026, 3, 12), score=31),
+        DailyScoreRow(vpn_name="VPN B", point_date=date(2026, 3, 10), score=35),
+        DailyScoreRow(vpn_name="VPN B", point_date=date(2026, 3, 11), score=36),
+        DailyScoreRow(vpn_name="VPN B", point_date=date(2026, 3, 12), score=34),
     ]
 
     matrix, vpn_names = _matrix_from_rows(rows=rows, dates=dates, top_n=None)
