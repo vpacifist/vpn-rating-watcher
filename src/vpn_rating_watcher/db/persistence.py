@@ -33,6 +33,17 @@ class SnapshotSummary:
     row_count: int
 
 
+@dataclass(slots=True)
+class CheckedAtRepairSummary:
+    source_name: str
+    dry_run: bool
+    total_rows: int
+    reparable_rows: int
+    updated_rows: int
+    unchanged_rows: int
+    unreparable_rows: int
+
+
 def _normalize_vpn_name(name: str) -> str:
     return " ".join(name.strip().casefold().split())
 
@@ -194,4 +205,55 @@ def get_latest_snapshot_summary(
         fetched_at=_ensure_utc(latest.fetched_at),
         content_hash=latest.content_hash,
         row_count=int(row_count),
+    )
+
+
+def repair_checked_at_from_raw(
+    session: Session,
+    *,
+    source_name: str = "maximkatz",
+    dry_run: bool = False,
+) -> CheckedAtRepairSummary:
+    """Recompute checked_at values from checked_at_raw for existing rows."""
+    stmt: Select[tuple[VpnSnapshotResult]] = (
+        select(VpnSnapshotResult)
+        .join(Snapshot, Snapshot.id == VpnSnapshotResult.snapshot_id)
+        .where(Snapshot.source_name == source_name)
+        .order_by(VpnSnapshotResult.id.asc())
+    )
+    rows = session.execute(stmt).scalars().all()
+
+    reparable_rows = 0
+    updated_rows = 0
+    unreparable_rows = 0
+
+    for row in rows:
+        parsed_checked_at = _parse_checked_at(row.checked_at_raw)
+        if parsed_checked_at is None:
+            unreparable_rows += 1
+            continue
+
+        reparable_rows += 1
+        current_checked_at = row.checked_at
+        if current_checked_at is not None:
+            current_checked_at = _ensure_utc(current_checked_at)
+
+        if current_checked_at == parsed_checked_at:
+            continue
+
+        updated_rows += 1
+        if not dry_run:
+            row.checked_at = parsed_checked_at
+
+    if not dry_run and updated_rows > 0:
+        session.commit()
+
+    return CheckedAtRepairSummary(
+        source_name=source_name,
+        dry_run=dry_run,
+        total_rows=len(rows),
+        reparable_rows=reparable_rows,
+        updated_rows=updated_rows,
+        unchanged_rows=reparable_rows - updated_rows,
+        unreparable_rows=unreparable_rows,
     )

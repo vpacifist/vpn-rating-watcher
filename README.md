@@ -72,6 +72,18 @@ Generate chart using explicit date range:
 vrw generate-chart --from 2026-03-01 --to 2026-03-29
 ```
 
+Repair persisted `checked_at` timestamps from stored `checked_at_raw` values (for already-saved rows):
+
+```bash
+vrw repair-checked-at --source-name maximkatz
+```
+
+Preview repair counts without writing changes:
+
+```bash
+vrw repair-checked-at --source-name maximkatz --dry-run
+```
+
 Useful options:
 - `--top-n 20` to keep only the top 20 VPN rows (sorted by latest score descending)
 - `--source-name csv_backfill` to chart only imported historical snapshots
@@ -211,6 +223,33 @@ No extra apt packages are needed in Railway when using this Dockerfile.
 - `vrw scrape-save` requires `DATABASE_URL` (and browser dependencies).
 - `vrw post-daily` requires `DATABASE_URL` and `TELEGRAM_BOT_TOKEN`.
 - `vrw scrape` can run without DB credentials.
+
+## Repairing historical wrong checked-at dates (production / Railway)
+
+Use this if chart points are shifted to the wrong day because older persisted rows had an incorrect `checked_at`.
+
+1. Open a Railway shell for the service connected to production `DATABASE_URL`.
+2. (Recommended) run a dry-run first:
+
+```bash
+vrw repair-checked-at --source-name maximkatz --dry-run
+```
+
+3. Run the actual repair:
+
+```bash
+vrw repair-checked-at --source-name maximkatz
+```
+
+4. Regenerate chart(s) from repaired DB data:
+
+```bash
+vrw generate-chart --source-name maximkatz --days 30
+```
+
+Notes:
+- The repair updates existing `vpn_snapshot_result.checked_at` values in place; it does not insert snapshots or rows.
+- Parsed values are recomputed from each row's stored `checked_at_raw`, so historical bad days (for example stale March 30 points) are corrected after the repair and chart regeneration.
 
 ## Telegram bot commands
 
