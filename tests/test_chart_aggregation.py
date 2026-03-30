@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from vpn_rating_watcher.charts.service import (
     DailyScoreRow,
+    _compute_label_positions,
     _effective_chart_dates,
     _matrix_from_rows,
     query_daily_latest_scores,
@@ -238,3 +239,28 @@ def test_matrix_from_rows_keeps_missing_dates_as_gaps() -> None:
     assert matrix[vpn_a_idx, 0] == 30
     assert np.isnan(matrix[vpn_a_idx, 1])
     assert matrix[vpn_a_idx, 2] == 31
+
+
+def test_compute_label_positions_preserves_order_and_spacing() -> None:
+    positions = _compute_label_positions(
+        [30.0, 30.1, 30.2],
+        lower=0.4,
+        upper=36.6,
+        min_gap=0.7,
+    )
+
+    assert positions[0] < positions[1] < positions[2]
+    assert positions[1] - positions[0] >= 0.7
+    assert positions[2] - positions[1] >= 0.7
+
+
+def test_compute_label_positions_respects_bounds() -> None:
+    positions = _compute_label_positions(
+        [36.5, 36.8],
+        lower=0.4,
+        upper=36.6,
+        min_gap=0.7,
+    )
+
+    assert positions[0] >= 0.4
+    assert positions[1] <= 36.6
