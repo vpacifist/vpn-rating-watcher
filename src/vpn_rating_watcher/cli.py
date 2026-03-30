@@ -12,7 +12,11 @@ from vpn_rating_watcher.charts.service import (
     generate_historical_line_chart,
 )
 from vpn_rating_watcher.core.settings import get_settings
-from vpn_rating_watcher.db.persistence import get_latest_snapshot_summary, persist_scrape_result
+from vpn_rating_watcher.db.persistence import (
+    get_latest_snapshot_summary,
+    persist_scrape_result,
+    repair_checked_at_from_raw,
+)
 from vpn_rating_watcher.db.session import get_session_factory
 from vpn_rating_watcher.importers.csv_backfill import (
     CSV_BACKFILL_SOURCE_NAME,
@@ -225,6 +229,47 @@ def generate_chart_command(
                 "vpn_count": result.vpn_count,
                 "day_count": result.day_count,
                 "chart_id": result.chart_id,
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+@app.command("repair-checked-at")
+def repair_checked_at_command(
+    source_name: str = typer.Option(
+        MAIN_LIVE_SOURCE_NAME,
+        "--source-name",
+        help="Source identifier to repair checked_at values for.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview impacted row counts without mutating DB values.",
+    ),
+) -> None:
+    """Recompute checked_at from checked_at_raw for existing persisted rows."""
+    session_factory = get_session_factory()
+    with session_factory() as session:
+        summary = repair_checked_at_from_raw(
+            session=session,
+            source_name=source_name,
+            dry_run=dry_run,
+        )
+
+    typer.echo(
+        json.dumps(
+            {
+                "status": "ok",
+                "source_name": summary.source_name,
+                "dry_run": summary.dry_run,
+                "total_rows": summary.total_rows,
+                "reparable_rows": summary.reparable_rows,
+                "updated_rows": summary.updated_rows,
+                "unchanged_rows": summary.unchanged_rows,
+                "unreparable_rows": summary.unreparable_rows,
             },
             ensure_ascii=False,
             indent=2,

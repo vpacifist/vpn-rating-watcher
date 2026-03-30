@@ -1,13 +1,17 @@
 from __future__ import annotations
 
-from datetime import timezone
+from datetime import datetime, timezone
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from vpn_rating_watcher.db.base import Base
 from vpn_rating_watcher.db.models import Snapshot, Vpn, VpnSnapshotResult
-from vpn_rating_watcher.db.persistence import get_latest_snapshot_summary, persist_scrape_result
+from vpn_rating_watcher.db.persistence import (
+    get_latest_snapshot_summary,
+    persist_scrape_result,
+    repair_checked_at_from_raw,
+)
 from vpn_rating_watcher.scraper.models import NormalizedRow, ScrapeResult
 
 
@@ -91,3 +95,50 @@ def test_latest_snapshot_summary_returns_latest_data() -> None:
         assert summary.content_hash == "hash-2"
         assert summary.row_count == 1
         assert summary.fetched_at.tzinfo == timezone.utc
+
+
+def test_repair_checked_at_from_raw_updates_incorrect_values() -> None:
+    with _db_session() as session:
+        persisted = persist_scrape_result(
+            session=session, scrape_result=_sample_scrape_result("hash-repair")
+        )
+        assert persisted.snapshot_id is not None
+
+        row = session.scalars(select(VpnSnapshotResult)).one()
+        row.checked_at = datetime(2026, 3, 30, 15, 0, tzinfo=timezone.utc)
+        session.commit()
+
+        summary = repair_checked_at_from_raw(session=session, source_name="maximkatz")
+        repaired = session.scalars(select(VpnSnapshotResult)).one()
+
+        assert summary.total_rows == 1
+        assert summary.reparable_rows == 1
+        assert summary.updated_rows == 1
+        assert summary.unchanged_rows == 0
+        assert summary.unreparable_rows == 0
+        assert repaired.checked_at is not None
+        assert repaired.checked_at.day == 28
+
+
+def test_repair_checked_at_from_raw_dry_run_does_not_mutate() -> None:
+    with _db_session() as session:
+        persisted = persist_scrape_result(
+            session=session, scrape_result=_sample_scrape_result("hash-dry-run")
+        )
+        assert persisted.snapshot_id is not None
+
+        row = session.scalars(select(VpnSnapshotResult)).one()
+        row.checked_at = None
+        session.commit()
+
+        summary = repair_checked_at_from_raw(
+            session=session,
+            source_name="maximkatz",
+            dry_run=True,
+        )
+        unchanged = session.scalars(select(VpnSnapshotResult)).one()
+
+        assert summary.total_rows == 1
+        assert summary.reparable_rows == 1
+        assert summary.updated_rows == 1
+        assert unchanged.checked_at is None
