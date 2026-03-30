@@ -236,12 +236,28 @@ def _render_line_chart(
     )
 
     x_values = np.arange(len(dates))
+    endpoints: list[tuple[str, float, float, str]] = []
     for idx, vpn_name in enumerate(vpn_names):
-        ax.plot(x_values, matrix[idx], marker="o", linewidth=1.8, markersize=3, label=vpn_name)
+        series = matrix[idx]
+        present = ~np.isnan(series)
+        observed_x = x_values[present]
+        observed_y = series[present]
+        if observed_x.size == 0:
+            continue
+        (line,) = ax.plot(observed_x, observed_y, marker="o", linewidth=1.8, markersize=3)
+        endpoints.append(
+            (
+                vpn_name,
+                float(observed_x[-1]),
+                float(observed_y[-1]),
+                line.get_color(),
+            )
+        )
 
     ax.set_xlabel("Date", color="white")
     ax.set_ylabel("Score", color="white")
-    ax.set_ylim(0, 36)
+    ax.set_ylim(0, 37)
+    ax.set_xlim(-0.5, max(0.0, float(len(dates) - 1)) + 2.5)
 
     generated_at = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     ax.set_title(
@@ -254,15 +270,59 @@ def _render_line_chart(
     for spine in ax.spines.values():
         spine.set_color("#7f8c8d")
 
-    legend = ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), frameon=False, fontsize=8)
-    for text in legend.get_texts():
-        text.set_color("white")
+    _add_end_labels(ax=ax, endpoints=endpoints)
 
     ax.grid(True, color="#3b3f4a", alpha=0.4, linewidth=0.7)
     ax.tick_params(colors="white")
     fig.tight_layout()
     fig.savefig(output_path, facecolor=fig.get_facecolor(), bbox_inches="tight")
     plt.close(fig)
+
+
+def _compute_label_positions(
+    y_values: list[float], *, lower: float, upper: float, min_gap: float
+) -> list[float]:
+    if not y_values:
+        return []
+
+    sorted_indices = sorted(range(len(y_values)), key=lambda index: y_values[index])
+    adjusted = [y_values[index] for index in sorted_indices]
+
+    for idx in range(1, len(adjusted)):
+        adjusted[idx] = max(adjusted[idx], adjusted[idx - 1] + min_gap)
+
+    if adjusted[-1] > upper:
+        shift_down = adjusted[-1] - upper
+        adjusted = [value - shift_down for value in adjusted]
+
+    for idx in range(len(adjusted) - 2, -1, -1):
+        adjusted[idx] = min(adjusted[idx], adjusted[idx + 1] - min_gap)
+
+    if adjusted[0] < lower:
+        shift_up = lower - adjusted[0]
+        adjusted = [value + shift_up for value in adjusted]
+
+    positioned = [0.0] * len(y_values)
+    for sorted_idx, original_idx in enumerate(sorted_indices):
+        positioned[original_idx] = adjusted[sorted_idx]
+    return positioned
+
+
+def _add_end_labels(
+    ax: matplotlib.axes.Axes,
+    endpoints: list[tuple[str, float, float, str]],
+) -> None:
+    if not endpoints:
+        return
+
+    ymax = ax.get_ylim()[1] - 0.4
+    y_values = [endpoint[2] for endpoint in endpoints]
+    label_ys = _compute_label_positions(y_values, lower=0.4, upper=ymax, min_gap=0.7)
+    label_x = max(endpoint[1] for endpoint in endpoints) + 0.55
+
+    for (vpn_name, x_end, y_end, color), y_label in zip(endpoints, label_ys, strict=True):
+        ax.plot([x_end, label_x - 0.08], [y_end, y_label], color=color, linewidth=0.9, alpha=0.85)
+        ax.text(label_x, y_label, vpn_name, color=color, fontsize=8, va="center", ha="left")
 
 
 def generate_historical_line_chart(
