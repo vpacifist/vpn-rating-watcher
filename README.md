@@ -10,7 +10,8 @@ Current implementation scope:
 - ✅ Historical backfill import from manual CSV transcription
 - ✅ Historical heatmap chart generation (PNG)
 - ✅ Telegram bot polling commands (`/start`, `/help`, `/today`, `/chart`, `/last`)
-- ⛔ No scheduled Telegram posting yet
+- ✅ Daily Telegram posting job command (`vrw post-daily`)
+- ⛔ No scheduler wiring yet (cron/Railway not implemented in this phase)
 
 ## Local setup
 
@@ -87,6 +88,21 @@ vrw bot
 
 The bot reads `TELEGRAM_BOT_TOKEN` from `.env`. If missing, `vrw bot` exits with a clear error.
 
+Run daily Telegram posting job:
+
+```bash
+vrw post-daily
+```
+
+Behavior of `vrw post-daily`:
+- Reads `TELEGRAM_BOT_TOKEN` from `.env` and fails clearly if it is missing.
+- Checks for a chart in `generated_chart` with `chart_date=today` (UTC date).
+- If today's chart is missing, exits cleanly without sending messages.
+- Sends today's chart image with short caption (`Daily chart: YYYY-MM-DD`) to active chats only (`telegram_chat.is_active=true`).
+- Is idempotent: only sends when `last_posted_date` is older than today, then updates `last_posted_date=today`.
+- Safe to rerun multiple times a day without duplicate posts.
+- Supports optional `TELEGRAM_DEFAULT_CHAT_IDS` env var (comma-separated chat IDs). On run, those IDs are upserted into `telegram_chat` as active chats so they can receive posts.
+
 
 ## Historical CSV backfill format
 
@@ -151,5 +167,4 @@ Notes:
 - Incoming command chats are upserted into `telegram_chat` (`chat_id`, `chat_type`, `title`, `is_active`, `last_posted_date`).
 - Bot command handling is polling-based (`vrw bot`).
 - If chart metadata exists but the PNG is missing on disk, the bot replies with a clear error message.
-- Daily posting scheduler is intentionally not implemented yet.
-
+- Daily posting scheduler is intentionally not implemented yet; use `vrw post-daily` from external scheduler later.
