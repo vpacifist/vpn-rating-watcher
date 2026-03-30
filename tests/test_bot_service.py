@@ -12,7 +12,7 @@ from vpn_rating_watcher.bot.service import (
     get_today_or_latest_chart,
     upsert_telegram_chat,
 )
-from vpn_rating_watcher.charts.service import HEATMAP_CHART_TYPE
+from vpn_rating_watcher.charts.service import LINE_CHART_TYPE
 from vpn_rating_watcher.db.base import Base
 from vpn_rating_watcher.db.models import (
     GeneratedChart,
@@ -46,12 +46,12 @@ def test_get_today_or_latest_chart_prefers_today() -> None:
     with _session() as session:
         older = GeneratedChart(
             chart_date=date(2026, 3, 28),
-            chart_type=HEATMAP_CHART_TYPE,
+            chart_type=LINE_CHART_TYPE,
             file_path="artifacts/charts/older.png",
         )
         today = GeneratedChart(
             chart_date=date(2026, 3, 29),
-            chart_type=HEATMAP_CHART_TYPE,
+            chart_type=LINE_CHART_TYPE,
             file_path="artifacts/charts/today.png",
         )
         session.add_all([older, today])
@@ -66,12 +66,12 @@ def test_get_today_or_latest_chart_falls_back_to_latest() -> None:
     with _session() as session:
         older = GeneratedChart(
             chart_date=date(2026, 3, 28),
-            chart_type=HEATMAP_CHART_TYPE,
+            chart_type=LINE_CHART_TYPE,
             file_path="artifacts/charts/older.png",
         )
         newest = GeneratedChart(
             chart_date=date(2026, 3, 29),
-            chart_type=HEATMAP_CHART_TYPE,
+            chart_type=LINE_CHART_TYPE,
             file_path="artifacts/charts/newest.png",
         )
         session.add_all([older, newest])

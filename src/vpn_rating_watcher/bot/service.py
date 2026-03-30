@@ -7,7 +7,7 @@ from pathlib import Path
 from sqlalchemy import Select, desc, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from vpn_rating_watcher.charts.service import HEATMAP_CHART_TYPE
+from vpn_rating_watcher.charts.service import LINE_CHART_TYPE
 from vpn_rating_watcher.db.models import (
     GeneratedChart,
     Snapshot,
@@ -74,7 +74,7 @@ def upsert_telegram_chat(
 def _latest_chart_query() -> Select[tuple[GeneratedChart]]:
     return (
         select(GeneratedChart)
-        .where(GeneratedChart.chart_type == HEATMAP_CHART_TYPE)
+        .where(GeneratedChart.chart_type == LINE_CHART_TYPE)
         .order_by(
             desc(GeneratedChart.chart_date),
             desc(GeneratedChart.created_at),

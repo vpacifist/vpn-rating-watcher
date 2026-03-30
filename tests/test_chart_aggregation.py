@@ -2,11 +2,17 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
+import numpy as np
 from sqlalchemy import create_engine
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
-from vpn_rating_watcher.charts.service import query_daily_latest_scores
+from vpn_rating_watcher.charts.service import (
+    DailyScoreRow,
+    _effective_chart_dates,
+    _matrix_from_rows,
+    query_daily_latest_scores,
+)
 from vpn_rating_watcher.db.base import Base
 from vpn_rating_watcher.db.models import Snapshot, Vpn, VpnSnapshotResult
 
@@ -198,3 +204,37 @@ def test_query_daily_latest_scores_binds_date_params_for_postgresql() -> None:
     assert end in date_params
     assert start.isoformat() not in compiled.params.values()
     assert end.isoformat() not in compiled.params.values()
+
+
+def test_effective_chart_dates_start_at_first_data_date() -> None:
+    rows = [
+        DailyScoreRow(vpn_name="VPN A", snapshot_date=date(2026, 3, 10), score=30),
+        DailyScoreRow(vpn_name="VPN A", snapshot_date=date(2026, 3, 12), score=31),
+    ]
+
+    dates = _effective_chart_dates(
+        rows=rows,
+        fallback_start=date(2026, 3, 1),
+        fallback_end=date(2026, 3, 30),
+    )
+
+    assert dates[0] == date(2026, 3, 10)
+    assert dates[-1] == date(2026, 3, 12)
+
+
+def test_matrix_from_rows_keeps_missing_dates_as_gaps() -> None:
+    dates = [date(2026, 3, 10), date(2026, 3, 11), date(2026, 3, 12)]
+    rows = [
+        DailyScoreRow(vpn_name="VPN A", snapshot_date=date(2026, 3, 10), score=30),
+        DailyScoreRow(vpn_name="VPN A", snapshot_date=date(2026, 3, 12), score=31),
+        DailyScoreRow(vpn_name="VPN B", snapshot_date=date(2026, 3, 10), score=35),
+        DailyScoreRow(vpn_name="VPN B", snapshot_date=date(2026, 3, 11), score=36),
+        DailyScoreRow(vpn_name="VPN B", snapshot_date=date(2026, 3, 12), score=34),
+    ]
+
+    matrix, vpn_names = _matrix_from_rows(rows=rows, dates=dates, top_n=None)
+
+    vpn_a_idx = vpn_names.index("VPN A")
+    assert matrix[vpn_a_idx, 0] == 30
+    assert np.isnan(matrix[vpn_a_idx, 1])
+    assert matrix[vpn_a_idx, 2] == 31

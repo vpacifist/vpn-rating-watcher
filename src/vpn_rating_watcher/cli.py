@@ -7,7 +7,10 @@ from datetime import date
 import typer
 
 from vpn_rating_watcher.bot.runner import run_polling
-from vpn_rating_watcher.charts.service import MAIN_LIVE_SOURCE_NAME, generate_historical_heatmap
+from vpn_rating_watcher.charts.service import (
+    MAIN_LIVE_SOURCE_NAME,
+    generate_historical_line_chart,
+)
 from vpn_rating_watcher.core.settings import get_settings
 from vpn_rating_watcher.db.persistence import get_latest_snapshot_summary, persist_scrape_result
 from vpn_rating_watcher.db.session import get_session_factory
@@ -185,7 +188,7 @@ def generate_chart_command(
         None, "--output", help="Custom output file path for PNG."
     ),
 ) -> None:
-    """Generate historical heatmap PNG and persist chart metadata."""
+    """Generate historical score line chart PNG and persist chart metadata."""
     try:
         from_date = _parse_iso_date(from_date_raw, "--from")
         to_date = _parse_iso_date(to_date_raw, "--to")
@@ -196,7 +199,7 @@ def generate_chart_command(
     session_factory = get_session_factory()
     with session_factory() as session:
         try:
-            result = generate_historical_heatmap(
+            result = generate_historical_line_chart(
                 session=session,
                 source_name=source_name,
                 days=days,
