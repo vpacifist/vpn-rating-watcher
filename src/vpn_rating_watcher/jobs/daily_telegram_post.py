@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Awaitable, Callable
 
 from aiogram import Bot
 from aiogram.types import FSInputFile
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from vpn_rating_watcher.bot.service import get_latest_chart_for_date, upsert_telegram_chat
+from vpn_rating_watcher.bot.service import (
+    get_latest_chart_for_date,
+    upsert_telegram_chat,
+)
 from vpn_rating_watcher.db.models import TelegramChat
 
 
@@ -117,7 +120,9 @@ def run_daily_posting_job(
             )
 
         active_chats = session.execute(_active_chats_query()).scalars().all()
-        chart_date_label = chart.chart_date.isoformat() if chart.chart_date else resolved_today.isoformat()
+        chart_date_label = (
+            chart.chart_date.isoformat() if chart.chart_date else resolved_today.isoformat()
+        )
         caption = f"Daily chart: {chart_date_label}"
 
         posted_count = 0
