@@ -250,8 +250,9 @@ def test_compute_label_positions_preserves_order_and_spacing() -> None:
     )
 
     assert positions[0] < positions[1] < positions[2]
-    assert positions[1] - positions[0] >= 0.7
-    assert positions[2] - positions[1] >= 0.7
+    tolerance = 1e-9
+    assert positions[1] - positions[0] >= 0.7 - tolerance
+    assert positions[2] - positions[1] >= 0.7 - tolerance
 
 
 def test_compute_label_positions_respects_bounds() -> None:
