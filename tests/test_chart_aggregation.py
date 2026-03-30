@@ -3,11 +3,26 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 from sqlalchemy import create_engine
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
 from vpn_rating_watcher.charts.service import query_daily_latest_scores
 from vpn_rating_watcher.db.base import Base
 from vpn_rating_watcher.db.models import Snapshot, Vpn, VpnSnapshotResult
+
+
+class _ExecuteResult:
+    def all(self) -> list[tuple[str, str, int]]:
+        return []
+
+
+class _CapturingSession:
+    def __init__(self) -> None:
+        self.stmt = None
+
+    def execute(self, stmt):  # noqa: ANN001
+        self.stmt = stmt
+        return _ExecuteResult()
 
 
 def _session() -> Session:
@@ -160,3 +175,26 @@ def test_query_daily_latest_scores_filters_source_name() -> None:
 
         assert live_rows[0].score == 32
         assert mixed_rows[0].score == 36
+
+
+def test_query_daily_latest_scores_binds_date_params_for_postgresql() -> None:
+    session = _CapturingSession()
+    start = date(2026, 3, 1)
+    end = date(2026, 3, 30)
+
+    rows = query_daily_latest_scores(
+        session=session,
+        start_date=start,
+        end_date=end,
+        source_name="mixed",
+    )
+    assert rows == []
+    assert session.stmt is not None
+
+    compiled = session.stmt.compile(dialect=postgresql.dialect())
+    date_params = [value for value in compiled.params.values() if isinstance(value, date)]
+
+    assert start in date_params
+    assert end in date_params
+    assert start.isoformat() not in compiled.params.values()
+    assert end.isoformat() not in compiled.params.values()
