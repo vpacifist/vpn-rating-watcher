@@ -18,6 +18,18 @@ MAIN_LIVE_SOURCE_NAME = "maximkatz"
 MIXED_SOURCE_NAME = "mixed"
 LINE_CHART_TYPE = "historical_line_chart"
 
+VPN_LINE_COLORS: dict[str, str] = {
+    "vpn red shield": "#ff5b27",
+    "papervpn": "#A0F249",
+    "vpn liberty": "#ba0300",
+    "blancvpn": "#3183ff",
+    "vpn generator": "#A3D9F9",
+    "amneziavpn": "#FBB26A",
+    "durev vpn": "#00FF00",
+    "наружу": "#FFD600",
+    "tunnelbear": "#C08D4A",
+}
+
 
 @dataclass(slots=True)
 class DailyScoreRow:
@@ -253,7 +265,15 @@ def _render_line_chart(
         observed_y = series[present]
         if observed_x.size == 0:
             continue
-        (line,) = ax.plot(observed_x, observed_y, marker="o", linewidth=1.8, markersize=3)
+        line_color = _color_for_vpn(vpn_name)
+        plot_kwargs: dict[str, str | float] = {
+            "marker": "o",
+            "linewidth": 1.8,
+            "markersize": 3,
+        }
+        if line_color:
+            plot_kwargs["color"] = line_color
+        (line,) = ax.plot(observed_x, observed_y, **plot_kwargs)
         endpoints.append(
             (
                 vpn_name,
@@ -315,6 +335,11 @@ def _compute_label_positions(
     for sorted_idx, original_idx in enumerate(sorted_indices):
         positioned[original_idx] = adjusted[sorted_idx]
     return positioned
+
+
+def _color_for_vpn(vpn_name: str) -> str | None:
+    normalized_name = " ".join(vpn_name.split()).casefold()
+    return VPN_LINE_COLORS.get(normalized_name)
 
 
 def _add_end_labels(
