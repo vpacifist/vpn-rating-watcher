@@ -31,6 +31,8 @@ class LastSnapshotRow:
     score: int
     score_max: int
     score_pct: float
+    checked_at: datetime | None
+    checked_at_raw: str | None
 
 
 @dataclass(slots=True)
@@ -136,6 +138,8 @@ def get_last_snapshot_summary(session: Session) -> LastSnapshotSummary | None:
             VpnSnapshotResult.score,
             VpnSnapshotResult.score_max,
             VpnSnapshotResult.score_pct,
+            VpnSnapshotResult.checked_at,
+            VpnSnapshotResult.checked_at_raw,
         )
         .join(Vpn, Vpn.id == VpnSnapshotResult.vpn_id)
         .where(VpnSnapshotResult.snapshot_id == latest_snapshot.id)
@@ -150,8 +154,10 @@ def get_last_snapshot_summary(session: Session) -> LastSnapshotSummary | None:
             score=score,
             score_max=score_max,
             score_pct=score_pct,
+            checked_at=checked_at,
+            checked_at_raw=checked_at_raw,
         )
-        for rank, vpn_name, score, score_max, score_pct in rows
+        for rank, vpn_name, score, score_max, score_pct, checked_at, checked_at_raw in rows
     ]
 
     fetched_at = latest_snapshot.fetched_at
@@ -178,8 +184,17 @@ def format_last_snapshot_summary(summary: LastSnapshotSummary) -> str:
 
     for row in summary.top_rows:
         pct = row.score_pct * 100
+        checked_at_text = "unknown"
+        if row.checked_at_raw:
+            checked_at_text = row.checked_at_raw
+        elif row.checked_at is not None:
+            checked_at = row.checked_at
+            if checked_at.tzinfo is None:
+                checked_at = checked_at.replace(tzinfo=timezone.utc)
+            checked_at_text = checked_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
         lines.append(
-            f"{row.rank_position}. {row.vpn_name} — {row.score}/{row.score_max} ({pct:.1f}%)"
+            f"{row.rank_position}. {row.vpn_name} — {row.score}/{row.score_max} ({pct:.1f}%), checked: {checked_at_text}"
         )
 
     if not summary.top_rows:
