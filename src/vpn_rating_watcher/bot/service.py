@@ -194,7 +194,9 @@ def format_last_snapshot_summary(summary: LastSnapshotSummary) -> str:
             checked_at_text = checked_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
         lines.append(
-            f"{row.rank_position}. {row.vpn_name} — {row.score}/{row.score_max} ({pct:.1f}%), checked: {checked_at_text}"
+            f"{row.rank_position}. {row.vpn_name} — "
+            f"{row.score}/{row.score_max} ({pct:.1f}%), "
+            f"checked: {checked_at_text}"
         )
 
     if not summary.top_rows:
