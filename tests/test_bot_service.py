@@ -123,9 +123,10 @@ def test_last_snapshot_summary_top_ten_format() -> None:
         assert len(summary.top_rows) == 10
         text = format_last_snapshot_summary(summary)
 
-        assert "Source: maximkatz" in text
-        assert "Fetched: 2026-03-29 12:00 UTC" in text
-        assert "1. VPN 1" in text
-        assert "checked: 29 мар, 08:00" in text
-        assert "10. VPN 10" in text
+        assert "🏆 Top VPN — snapshot 2026-03-29 12:00 UTC" in text
+        assert "ℹ️ Source: maximkatz · 36 checks/provider" in text
+        assert "🟢 #1 VPN 1 — 83.3% (30/36)" in text
+        assert "🟢 #10 VPN 10 — 83.3% (30/36)" in text
         assert "11. VPN 11" not in text
+        assert "checked:" not in text
+        assert "🕒 Freshness:" in text

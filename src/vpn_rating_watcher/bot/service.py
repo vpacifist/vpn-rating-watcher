@@ -42,6 +42,38 @@ class LastSnapshotSummary:
     top_rows: list[LastSnapshotRow]
 
 
+def _format_checked_at_for_outlier(row: LastSnapshotRow) -> str:
+    if row.checked_at_raw:
+        return row.checked_at_raw
+
+    if row.checked_at is None:
+        return "unknown"
+
+    checked_at = row.checked_at
+    if checked_at.tzinfo is None:
+        checked_at = checked_at.replace(tzinfo=timezone.utc)
+    return checked_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+
+def _score_emoji(score_pct: float) -> str:
+    pct = score_pct * 100
+    if pct >= 80:
+        return "🟢"
+    if pct >= 50:
+        return "🟡"
+    return "🔴"
+
+
+def _checked_at_utc(row: LastSnapshotRow) -> datetime | None:
+    if row.checked_at is None:
+        return None
+
+    checked_at = row.checked_at
+    if checked_at.tzinfo is None:
+        checked_at = checked_at.replace(tzinfo=timezone.utc)
+    return checked_at.astimezone(timezone.utc)
+
+
 def upsert_telegram_chat(
     session: Session,
     *,
@@ -172,35 +204,59 @@ def get_last_snapshot_summary(session: Session) -> LastSnapshotSummary | None:
 
 
 def format_last_snapshot_summary(summary: LastSnapshotSummary) -> str:
+    fetched_utc = summary.fetched_at.astimezone(timezone.utc)
     lines = [
-        "Latest snapshot:",
-        f"Source: {summary.source_name}",
-        (
-            "Fetched: "
-            f"{summary.fetched_at.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
-        ),
-        "Top 10:",
+        f"🏆 Top VPN — snapshot {fetched_utc.strftime('%Y-%m-%d %H:%M UTC')}",
+        "",
     ]
+
+    outlier_names: list[str] = []
+    checked_times = [checked_at for row in summary.top_rows if (checked_at := _checked_at_utc(row))]
+    stale_cutoff = fetched_utc.timestamp() - 12 * 60 * 60
 
     for row in summary.top_rows:
         pct = row.score_pct * 100
-        checked_at_text = "unknown"
-        if row.checked_at_raw:
-            checked_at_text = row.checked_at_raw
-        elif row.checked_at is not None:
-            checked_at = row.checked_at
-            if checked_at.tzinfo is None:
-                checked_at = checked_at.replace(tzinfo=timezone.utc)
-            checked_at_text = checked_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        stale_suffix = ""
+        checked_at = _checked_at_utc(row)
+        if checked_at is not None and checked_at.timestamp() < stale_cutoff:
+            stale_suffix = " · stale"
+            outlier_names.append(
+                f"{row.vpn_name} ({_format_checked_at_for_outlier(row)})"
+            )
 
         lines.append(
-            f"{row.rank_position}. {row.vpn_name} — "
-            f"{row.score}/{row.score_max} ({pct:.1f}%), "
-            f"checked: {checked_at_text}"
+            f"{_score_emoji(row.score_pct)} "
+            f"#{row.rank_position} {row.vpn_name} — "
+            f"{pct:.1f}% ({row.score}/{row.score_max})"
+            f"{stale_suffix}"
         )
 
     if not summary.top_rows:
         lines.append("No VPN rows found in the latest snapshot.")
+        lines.append("")
+        lines.append(f"ℹ️ Source: {summary.source_name}")
+        return "\n".join(lines)
+
+    lines.append("")
+    provider_size = summary.top_rows[0].score_max if summary.top_rows else "unknown"
+    lines.append(f"ℹ️ Source: {summary.source_name} · {provider_size} checks/provider")
+
+    if checked_times:
+        sorted_times = sorted(checked_times)
+        freshness = (
+            f"{sorted_times[0].strftime('%-d %b, %H:%M')}–"
+            f"{sorted_times[-1].strftime('%H:%M')} UTC"
+        )
+        if outlier_names:
+            outlier_text = ", ".join(outlier_names)
+            lines.append(f"🕒 Freshness: {freshness} · outliers: {outlier_text}")
+        else:
+            lines.append(f"🕒 Freshness: {freshness}")
+    elif outlier_names:
+        outlier_text = ", ".join(outlier_names)
+        lines.append(f"🕒 Freshness: unknown · outliers: {outlier_text}")
+    else:
+        lines.append("🕒 Freshness: unknown")
 
     return "\n".join(lines)
 
