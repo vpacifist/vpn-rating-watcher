@@ -170,3 +170,62 @@ def test_last_snapshot_summary_uses_checked_at_raw_when_checked_at_missing() -> 
         assert summary is not None
         text = format_last_snapshot_summary(summary)
         assert "🕒 Freshness: 3 Apr, 09:13–09:13 UTC" in text
+
+
+def test_last_snapshot_summary_shows_end_date_for_cross_day_freshness_range() -> None:
+    with _session() as session:
+        snapshot = Snapshot(
+            source_name="maximkatz",
+            source_url="https://vpn.maximkatz.com/",
+            fetched_at=datetime(2026, 4, 3, 12, 0, tzinfo=timezone.utc),
+            content_hash="cross-day-freshness",
+            raw_payload_json={},
+        )
+        session.add(snapshot)
+        session.flush()
+
+        first_vpn = Vpn(name="firstvpn", normalized_name="firstvpn")
+        second_vpn = Vpn(name="secondvpn", normalized_name="secondvpn")
+        session.add_all([first_vpn, second_vpn])
+        session.flush()
+
+        session.add_all(
+            [
+                VpnSnapshotResult(
+                    snapshot_id=snapshot.id,
+                    vpn_id=first_vpn.id,
+                    rank_position=1,
+                    checked_at=datetime(2026, 4, 2, 21, 42, tzinfo=timezone.utc),
+                    checked_at_raw="2 апр, 21:42",
+                    result_raw="34/36",
+                    score=34,
+                    score_max=36,
+                    score_pct=34 / 36,
+                    price_raw=None,
+                    traffic_raw=None,
+                    devices_raw=None,
+                    details_url=None,
+                ),
+                VpnSnapshotResult(
+                    snapshot_id=snapshot.id,
+                    vpn_id=second_vpn.id,
+                    rank_position=2,
+                    checked_at=datetime(2026, 4, 3, 12, 4, tzinfo=timezone.utc),
+                    checked_at_raw="3 апр, 12:04",
+                    result_raw="30/36",
+                    score=30,
+                    score_max=36,
+                    score_pct=30 / 36,
+                    price_raw=None,
+                    traffic_raw=None,
+                    devices_raw=None,
+                    details_url=None,
+                ),
+            ]
+        )
+        session.commit()
+
+        summary = get_last_snapshot_summary(session)
+        assert summary is not None
+        text = format_last_snapshot_summary(summary)
+        assert "🕒 Freshness: 2 Apr, 21:42–3 Apr, 12:04 UTC" in text

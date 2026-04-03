@@ -274,10 +274,18 @@ def format_last_snapshot_summary(summary: LastSnapshotSummary) -> str:
 
     if checked_times:
         sorted_times = sorted(checked_times)
-        freshness = (
-            f"{sorted_times[0].strftime('%-d %b, %H:%M')}–"
-            f"{sorted_times[-1].strftime('%H:%M')} UTC"
-        )
+        start_time = sorted_times[0]
+        end_time = sorted_times[-1]
+        if start_time.date() == end_time.date():
+            freshness = (
+                f"{start_time.strftime('%-d %b, %H:%M')}–"
+                f"{end_time.strftime('%H:%M')} UTC"
+            )
+        else:
+            freshness = (
+                f"{start_time.strftime('%-d %b, %H:%M')}–"
+                f"{end_time.strftime('%-d %b, %H:%M')} UTC"
+            )
         if outlier_names:
             outlier_text = ", ".join(outlier_names)
             lines.append(f"🕒 Freshness: {freshness} · outliers: {outlier_text}")
