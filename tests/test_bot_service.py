@@ -103,8 +103,8 @@ def test_last_snapshot_summary_top_ten_format() -> None:
                     snapshot_id=snapshot.id,
                     vpn_id=vpn.id,
                     rank_position=i + 1,
-                    checked_at=None,
-                    checked_at_raw=None,
+                    checked_at=datetime(2026, 3, 29, 8, i, tzinfo=timezone.utc),
+                    checked_at_raw=f"29 мар, 08:{i:02d}",
                     result_raw="30/36",
                     score=30,
                     score_max=36,
@@ -126,5 +126,6 @@ def test_last_snapshot_summary_top_ten_format() -> None:
         assert "Source: maximkatz" in text
         assert "Fetched: 2026-03-29 12:00 UTC" in text
         assert "1. VPN 1" in text
+        assert "checked: 29 мар, 08:00" in text
         assert "10. VPN 10" in text
         assert "11. VPN 11" not in text
