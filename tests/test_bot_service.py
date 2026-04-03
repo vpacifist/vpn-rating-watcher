@@ -130,3 +130,43 @@ def test_last_snapshot_summary_top_ten_format() -> None:
         assert "11. VPN 11" not in text
         assert "checked:" not in text
         assert "🕒 Freshness:" in text
+
+
+def test_last_snapshot_summary_uses_checked_at_raw_when_checked_at_missing() -> None:
+    with _session() as session:
+        snapshot = Snapshot(
+            source_name="maximkatz",
+            source_url="https://vpn.maximkatz.com/",
+            fetched_at=datetime(2026, 4, 3, 12, 0, tzinfo=timezone.utc),
+            content_hash="raw-time-hash",
+            raw_payload_json={},
+        )
+        session.add(snapshot)
+        session.flush()
+
+        vpn = Vpn(name="blancvpn", normalized_name="blancvpn")
+        session.add(vpn)
+        session.flush()
+        session.add(
+            VpnSnapshotResult(
+                snapshot_id=snapshot.id,
+                vpn_id=vpn.id,
+                rank_position=1,
+                checked_at=None,
+                checked_at_raw="3 апр, 09:13",
+                result_raw="34/36",
+                score=34,
+                score_max=36,
+                score_pct=34 / 36,
+                price_raw=None,
+                traffic_raw=None,
+                devices_raw=None,
+                details_url=None,
+            )
+        )
+        session.commit()
+
+        summary = get_last_snapshot_summary(session)
+        assert summary is not None
+        text = format_last_snapshot_summary(summary)
+        assert "🕒 Freshness: 3 Apr, 09:13–09:13 UTC" in text

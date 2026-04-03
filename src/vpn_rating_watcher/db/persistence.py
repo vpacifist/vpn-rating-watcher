@@ -21,6 +21,10 @@ class PersistSnapshotResult:
     snapshot_id: int | None
     inserted_vpn_count: int
     inserted_result_count: int
+    checked_at_parsed_count: int = 0
+    checked_at_missing_raw_count: int = 0
+    checked_at_parse_failed_count: int = 0
+    checked_at_parse_failed_samples: tuple[str, ...] = ()
 
 
 @dataclass(slots=True)
@@ -59,6 +63,16 @@ def _parse_checked_at(value: str | None) -> datetime | None:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def _parse_checked_at_with_reason(value: str | None) -> tuple[datetime | None, str]:
+    if not value:
+        return None, "missing_raw"
+
+    parsed = _parse_checked_at(value)
+    if parsed is None:
+        return None, "parse_failed"
+    return parsed, "parsed"
 
 
 def _ensure_utc(dt: datetime) -> datetime:
@@ -152,17 +166,31 @@ def persist_scrape_result(
         session.flush()
 
         inserted_vpn_count = 0
+        checked_at_parsed_count = 0
+        checked_at_missing_raw_count = 0
+        checked_at_parse_failed_count = 0
+        checked_at_parse_failed_samples: list[str] = []
         for row in scrape_result.rows:
             vpn, inserted = _get_or_create_vpn(session=session, row=row)
             if inserted:
                 inserted_vpn_count += 1
+
+            parsed_checked_at, parse_status = _parse_checked_at_with_reason(row.checked_at_raw)
+            if parse_status == "parsed":
+                checked_at_parsed_count += 1
+            elif parse_status == "missing_raw":
+                checked_at_missing_raw_count += 1
+            else:
+                checked_at_parse_failed_count += 1
+                if len(checked_at_parse_failed_samples) < 5 and row.checked_at_raw:
+                    checked_at_parse_failed_samples.append(row.checked_at_raw)
 
             session.add(
                 VpnSnapshotResult(
                     snapshot_id=snapshot.id,
                     vpn_id=vpn.id,
                     rank_position=row.rank_position,
-                    checked_at=_parse_checked_at(row.checked_at_raw),
+                    checked_at=parsed_checked_at,
                     checked_at_raw=row.checked_at_raw,
                     result_raw=row.result_raw,
                     score=row.score,
@@ -183,6 +211,10 @@ def persist_scrape_result(
             snapshot_id=snapshot.id,
             inserted_vpn_count=inserted_vpn_count,
             inserted_result_count=len(scrape_result.rows),
+            checked_at_parsed_count=checked_at_parsed_count,
+            checked_at_missing_raw_count=checked_at_missing_raw_count,
+            checked_at_parse_failed_count=checked_at_parse_failed_count,
+            checked_at_parse_failed_samples=tuple(checked_at_parse_failed_samples),
         )
 
 
