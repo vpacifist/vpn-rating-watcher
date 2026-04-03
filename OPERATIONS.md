@@ -8,6 +8,14 @@
 4. Snapshot + result rows are written to PostgreSQL transactionally.
 5. If the latest hash is unchanged, the run returns `no_change` and avoids duplicates.
 
+## Hourly sync flow
+
+1. Run `vrw sync-hourly` once per hour (or any chosen cadence).
+2. Command scrapes and persists snapshot.
+3. If content hash changed, command regenerates chart and stores metadata.
+4. Active chats are resolved from `telegram_chat` (+ optional `TELEGRAM_DEFAULT_CHAT_IDS` bootstrap values).
+5. Active chats receive text notification about what changed.
+
 ## Chart generation flow
 
 1. Run `vrw generate-chart` (explicitly or from an operator workflow).
@@ -38,8 +46,8 @@ Create three Railway services from the same repository/image:
    - Command: `vrw bot`
    - Schedule: none (always on)
 2. **vrw-scrape** (cron)
-   - Command: `vrw scrape-save`
-   - Schedule: `0 */6 * * *`
+   - Command: `vrw sync-hourly`
+   - Schedule: `0 * * * *`
 3. **vrw-post-daily** (cron)
    - Command: `vrw post-daily`
    - Schedule: `0 19 * * *`

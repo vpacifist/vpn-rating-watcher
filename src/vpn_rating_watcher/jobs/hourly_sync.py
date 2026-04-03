@@ -1,0 +1,263 @@
+from __future__ import annotations
+
+import asyncio
+import logging
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+
+from aiogram import Bot
+from sqlalchemy import Select, desc, select
+from sqlalchemy.orm import Session, sessionmaker
+
+from vpn_rating_watcher.charts.service import ChartGenerationResult, generate_historical_line_chart
+from vpn_rating_watcher.db.models import Snapshot, TelegramChat, Vpn, VpnSnapshotResult
+from vpn_rating_watcher.db.persistence import PersistSnapshotResult, persist_scrape_result
+from vpn_rating_watcher.jobs.daily_telegram_post import ensure_default_chats, parse_default_chat_ids
+from vpn_rating_watcher.scraper.models import ScrapeResult
+from vpn_rating_watcher.scraper.service import scrape_once
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class SnapshotDiffSummary:
+    changed_count: int
+    new_count: int
+    removed_count: int
+    top_changes: list[str]
+
+
+@dataclass(slots=True)
+class HourlySyncResult:
+    status: str
+    message: str
+    source_name: str
+    content_hash: str | None
+    snapshot_id: int | None
+    chart_id: int | None
+    notified_count: int
+    active_chat_count: int
+    changed_count: int
+    new_count: int
+    removed_count: int
+
+
+def _active_chats_query() -> Select[tuple[TelegramChat]]:
+    return (
+        select(TelegramChat)
+        .where(TelegramChat.is_active.is_(True))
+        .order_by(TelegramChat.id.asc())
+    )
+
+
+def _latest_snapshot_by_source(session: Session, source_name: str) -> Snapshot | None:
+    return session.execute(
+        select(Snapshot)
+        .where(Snapshot.source_name == source_name)
+        .order_by(desc(Snapshot.fetched_at), desc(Snapshot.id))
+        .limit(1)
+    ).scalar_one_or_none()
+
+
+def _snapshot_scores(session: Session, snapshot_id: int) -> dict[str, tuple[int, int]]:
+    rows = session.execute(
+        select(Vpn.name, VpnSnapshotResult.rank_position, VpnSnapshotResult.score)
+        .join(Vpn, Vpn.id == VpnSnapshotResult.vpn_id)
+        .where(VpnSnapshotResult.snapshot_id == snapshot_id)
+    ).all()
+    return {name: (rank, score) for name, rank, score in rows}
+
+
+def _diff_snapshots(
+    session: Session,
+    *,
+    old_snapshot_id: int | None,
+    new_snapshot_id: int,
+) -> SnapshotDiffSummary:
+    new_scores = _snapshot_scores(session=session, snapshot_id=new_snapshot_id)
+    if old_snapshot_id is None:
+        top_names = sorted(new_scores, key=lambda vpn_name: new_scores[vpn_name][0])[:5]
+        return SnapshotDiffSummary(
+            changed_count=0,
+            new_count=len(new_scores),
+            removed_count=0,
+            top_changes=[
+                f"new: #{new_scores[vpn_name][0]} {vpn_name} ({new_scores[vpn_name][1]})"
+                for vpn_name in top_names
+            ],
+        )
+
+    old_scores = _snapshot_scores(session=session, snapshot_id=old_snapshot_id)
+
+    changed_names = sorted(
+        (
+            name
+            for name in (old_scores.keys() & new_scores.keys())
+            if old_scores[name] != new_scores[name]
+        ),
+        key=lambda vpn_name: new_scores[vpn_name][0],
+    )
+    new_names = sorted(
+        new_scores.keys() - old_scores.keys(),
+        key=lambda vpn_name: new_scores[vpn_name][0],
+    )
+    removed_names = sorted(old_scores.keys() - new_scores.keys())
+
+    top_changes: list[str] = []
+    for name in changed_names[:5]:
+        old_rank, old_score = old_scores[name]
+        new_rank, new_score = new_scores[name]
+        top_changes.append(
+            f"chg: {name} #{old_rank}->{new_rank} score {old_score}->{new_score}"
+        )
+
+    for name in new_names[: max(0, 5 - len(top_changes))]:
+        new_rank, new_score = new_scores[name]
+        top_changes.append(f"new: #{new_rank} {name} ({new_score})")
+
+    return SnapshotDiffSummary(
+        changed_count=len(changed_names),
+        new_count=len(new_names),
+        removed_count=len(removed_names),
+        top_changes=top_changes,
+    )
+
+
+async def _send_text(*, token: str, chat_id: str, text: str) -> None:
+    bot = Bot(token=token)
+    try:
+        await bot.send_message(chat_id=chat_id, text=text)
+    finally:
+        await bot.session.close()
+
+
+def _build_update_message(
+    *,
+    source_name: str,
+    saved: PersistSnapshotResult,
+    chart: ChartGenerationResult,
+    diff: SnapshotDiffSummary,
+) -> str:
+    lines = [
+        "✅ VPN Rating Watcher: база обновлена",
+        f"Source: {source_name}",
+        f"Snapshot ID: {saved.snapshot_id}",
+        f"Chart ID: {chart.chart_id} ({chart.end_date.isoformat()})",
+        (
+            "Изменения: "
+            f"changed={diff.changed_count}, new={diff.new_count}, removed={diff.removed_count}"
+        ),
+    ]
+    if diff.top_changes:
+        lines.append("Top changes:")
+        lines.extend(f"- {line}" for line in diff.top_changes)
+    return "\n".join(lines)
+
+
+def run_hourly_sync_job(
+    *,
+    session_factory: sessionmaker[Session],
+    source_name: str,
+    source_url: str,
+    artifacts_dir: str,
+    headless: bool,
+    token: str | None,
+    default_chat_ids_raw: str | None,
+    scrape_func: Callable[..., ScrapeResult] = scrape_once,
+    chart_func: Callable[..., ChartGenerationResult] = generate_historical_line_chart,
+    send_message_func: Callable[..., Awaitable[None]] | None = None,
+) -> HourlySyncResult:
+    logger.info("hourly_sync.started", extra={"source_name": source_name, "source_url": source_url})
+
+    scrape_result = scrape_func(
+        source_url=source_url,
+        artifacts_dir=artifacts_dir,
+        headless=headless,
+    )
+
+    sender = send_message_func or _send_text
+    notified_count = 0
+
+    with session_factory() as session:
+        previous = _latest_snapshot_by_source(session=session, source_name=source_name)
+        previous_id = previous.id if previous else None
+
+    with session_factory() as session:
+        saved = persist_scrape_result(
+            session=session,
+            scrape_result=scrape_result,
+            source_name=source_name,
+        )
+
+        default_chat_ids = parse_default_chat_ids(default_chat_ids_raw)
+        ensure_default_chats(session=session, chat_ids=default_chat_ids)
+        active_chats = session.execute(_active_chats_query()).scalars().all()
+        active_chat_count = len(active_chats)
+
+        if saved.status != "created":
+            logger.info(
+                "hourly_sync.no_change",
+                extra={"source_name": source_name, "content_hash": saved.content_hash},
+            )
+            return HourlySyncResult(
+                status="no_change",
+                message="No source changes detected; chart was not regenerated.",
+                source_name=source_name,
+                content_hash=saved.content_hash,
+                snapshot_id=saved.snapshot_id,
+                chart_id=None,
+                notified_count=0,
+                active_chat_count=active_chat_count,
+                changed_count=0,
+                new_count=0,
+                removed_count=0,
+            )
+
+        assert saved.snapshot_id is not None
+        diff = _diff_snapshots(
+            session=session,
+            old_snapshot_id=previous_id,
+            new_snapshot_id=saved.snapshot_id,
+        )
+        chart = chart_func(session=session, source_name=source_name)
+
+        message_text = _build_update_message(
+            source_name=source_name,
+            saved=saved,
+            chart=chart,
+            diff=diff,
+        )
+
+        if token:
+            for chat in active_chats:
+                asyncio.run(sender(token=token, chat_id=chat.chat_id, text=message_text))
+                notified_count += 1
+        else:
+            logger.warning("hourly_sync.token_missing_skip_notify")
+
+    logger.info(
+        "hourly_sync.updated",
+        extra={
+            "source_name": source_name,
+            "snapshot_id": saved.snapshot_id,
+            "chart_id": chart.chart_id,
+            "changed_count": diff.changed_count,
+            "new_count": diff.new_count,
+            "removed_count": diff.removed_count,
+            "notified_count": notified_count,
+        },
+    )
+
+    return HourlySyncResult(
+        status="updated",
+        message="Source changed; snapshot saved, chart regenerated, notifications sent.",
+        source_name=source_name,
+        content_hash=saved.content_hash,
+        snapshot_id=saved.snapshot_id,
+        chart_id=chart.chart_id,
+        notified_count=notified_count,
+        active_chat_count=active_chat_count,
+        changed_count=diff.changed_count,
+        new_count=diff.new_count,
+        removed_count=diff.removed_count,
+    )

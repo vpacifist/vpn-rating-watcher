@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import date
 
 import typer
@@ -24,9 +25,20 @@ from vpn_rating_watcher.importers.csv_backfill import (
     import_csv_backfill,
 )
 from vpn_rating_watcher.jobs.daily_telegram_post import run_daily_posting_job
+from vpn_rating_watcher.jobs.hourly_sync import run_hourly_sync_job
 from vpn_rating_watcher.scraper.service import scrape_once
 
 app = typer.Typer(help="VPN rating watcher CLI")
+logger = logging.getLogger(__name__)
+
+
+def _configure_logging() -> None:
+    settings = get_settings()
+    log_level = settings.app_log_level.upper()
+    logging.basicConfig(
+        level=getattr(logging, log_level, logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
 
 
 def _parse_iso_date(value: str | None, flag_name: str) -> date | None:
@@ -45,6 +57,7 @@ def scrape_command(
     headless: bool = typer.Option(True, help="Run Chromium in headless mode."),
 ) -> None:
     """Run one-shot scraping from rendered DOM and print normalized payload."""
+    _configure_logging()
     result = scrape_once(
         source_url=source_url,
         artifacts_dir=artifacts_dir,
@@ -62,6 +75,7 @@ def scrape_and_save_command(
     headless: bool = typer.Option(True, help="Run Chromium in headless mode."),
 ) -> None:
     """Run scraping and persist results transactionally."""
+    _configure_logging()
     scrape_result = scrape_once(
         source_url=source_url,
         artifacts_dir=artifacts_dir,
@@ -100,6 +114,7 @@ def latest_snapshot_command(
     source_name: str = typer.Option("maximkatz", help="Source identifier to query."),
 ) -> None:
     """Print summary for the latest stored snapshot."""
+    _configure_logging()
     session_factory = get_session_factory()
     with session_factory() as session:
         summary = get_latest_snapshot_summary(session=session, source_name=source_name)
@@ -136,6 +151,7 @@ def import_csv(
     ),
 ) -> None:
     """Import manually transcribed historical snapshots from CSV."""
+    _configure_logging()
     session_factory = get_session_factory()
     with session_factory() as session:
         try:
@@ -197,6 +213,7 @@ def generate_chart_command(
     ),
 ) -> None:
     """Generate historical score line chart PNG and persist chart metadata."""
+    _configure_logging()
     try:
         from_date = _parse_iso_date(from_date_raw, "--from")
         to_date = _parse_iso_date(to_date_raw, "--to")
@@ -255,6 +272,7 @@ def repair_checked_at_command(
     ),
 ) -> None:
     """Recompute checked_at from checked_at_raw for existing persisted rows."""
+    _configure_logging()
     session_factory = get_session_factory()
     with session_factory() as session:
         summary = repair_checked_at_from_raw(
@@ -285,6 +303,7 @@ def repair_checked_at_command(
 @app.command("bot")
 def run_bot() -> None:
     """Run Telegram bot in polling mode."""
+    _configure_logging()
     token = get_settings().telegram_bot_token
     if not token:
         typer.echo("Bot startup error: TELEGRAM_BOT_TOKEN is not set.")
@@ -297,6 +316,7 @@ def run_bot() -> None:
 @app.command("post-daily")
 def post_daily() -> None:
     """Post today's chart to active Telegram chats at most once per day."""
+    _configure_logging()
     settings = get_settings()
     if not settings.telegram_bot_token:
         typer.echo("Daily posting error: TELEGRAM_BOT_TOKEN is not set.")
@@ -317,6 +337,50 @@ def post_daily() -> None:
                 "active_chat_count": result.active_chat_count,
                 "posted_count": result.posted_count,
                 "skipped_count": result.skipped_count,
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+@app.command("sync-hourly")
+def sync_hourly(
+    source_name: str = typer.Option("maximkatz", help="Source identifier for DB dedupe."),
+    source_url: str = typer.Option("https://vpn.maximkatz.com/", help="Source URL to scrape."),
+    artifacts_dir: str = typer.Option("artifacts", help="Directory for debug artifacts."),
+    headless: bool = typer.Option(True, help="Run Chromium in headless mode."),
+) -> None:
+    """Scrape source, regenerate chart on change, and notify Telegram chats."""
+    _configure_logging()
+    settings = get_settings()
+    logger.info("sync_hourly.command_started")
+
+    session_factory = get_session_factory()
+    result = run_hourly_sync_job(
+        session_factory=session_factory,
+        source_name=source_name,
+        source_url=source_url,
+        artifacts_dir=artifacts_dir,
+        headless=headless,
+        token=settings.telegram_bot_token,
+        default_chat_ids_raw=settings.telegram_default_chat_ids,
+    )
+    typer.echo(
+        json.dumps(
+            {
+                "status": result.status,
+                "message": result.message,
+                "source_name": result.source_name,
+                "content_hash": result.content_hash,
+                "snapshot_id": result.snapshot_id,
+                "chart_id": result.chart_id,
+                "active_chat_count": result.active_chat_count,
+                "notified_count": result.notified_count,
+                "changed_count": result.changed_count,
+                "new_count": result.new_count,
+                "removed_count": result.removed_count,
             },
             ensure_ascii=False,
             indent=2,

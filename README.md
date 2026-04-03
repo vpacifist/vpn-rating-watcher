@@ -115,6 +115,19 @@ Behavior of `vrw post-daily`:
 - Safe to rerun multiple times a day without duplicate posts.
 - Supports optional `TELEGRAM_DEFAULT_CHAT_IDS` env var (comma-separated chat IDs). On run, those IDs are upserted into `telegram_chat` as active chats so they can receive posts.
 
+Run hourly sync job (scrape + conditional chart rebuild + Telegram update notification):
+
+```bash
+vrw sync-hourly
+```
+
+Behavior of `vrw sync-hourly`:
+- Scrapes source page and persists snapshot (`scrape-save` behavior).
+- If content hash is unchanged, exits with `no_change` and does not rebuild chart.
+- If content changed, rebuilds chart (`generate-chart` behavior) and stores chart metadata.
+- Sends a Telegram text update to active chats with a compact change summary (`changed/new/removed`).
+- Emits structured logs (start/no_change/updated) for troubleshooting.
+
 
 ## Historical CSV backfill format
 
@@ -171,8 +184,8 @@ Use one repo and create three Railway services:
 
 1. **Bot service** (long-running worker)
    - Start command: `vrw bot`
-2. **Scraper cron job**
-   - Start command: `vrw scrape-save`
+2. **Sync cron job**
+   - Start command: `vrw sync-hourly`
    - Schedule: `0 */6 * * *` (4 times/day, every 6 hours UTC)
 3. **Daily posting cron job**
    - Start command: `vrw post-daily`
@@ -269,4 +282,4 @@ Notes:
 - Incoming command chats are upserted into `telegram_chat` (`chat_id`, `chat_type`, `title`, `is_active`, `last_posted_date`).
 - Bot command handling is polling-based (`vrw bot`).
 - If chart metadata exists but the PNG is missing on disk, the bot replies with a clear error message.
-- Use Railway cron jobs (documented above) to run `vrw scrape-save` and `vrw post-daily`.
+- Use Railway cron jobs (documented above) to run `vrw sync-hourly` and `vrw post-daily`.
