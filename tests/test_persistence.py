@@ -142,3 +142,56 @@ def test_repair_checked_at_from_raw_dry_run_does_not_mutate() -> None:
         assert summary.reparable_rows == 1
         assert summary.updated_rows == 1
         assert unchanged.checked_at is None
+
+
+def test_persist_reports_checked_at_parse_stats() -> None:
+    with _db_session() as session:
+        scrape_result = ScrapeResult(
+            source_url="https://vpn.maximkatz.com/",
+            scraped_at_utc="2026-03-29T10:00:00+00:00",
+            table_hash="hash-parse-stats",
+            row_count=3,
+            rows=[
+                NormalizedRow(
+                    rank_position=1,
+                    vpn_name="vpn one",
+                    checked_at_raw="28.03.2026 15:00",
+                    result_raw="35/36",
+                    score=35,
+                    score_max=36,
+                    score_pct=35 / 36,
+                    details_url="https://vpn.maximkatz.com/vpn/one",
+                    metadata={},
+                ),
+                NormalizedRow(
+                    rank_position=2,
+                    vpn_name="vpn two",
+                    checked_at_raw=None,
+                    result_raw="20/36",
+                    score=20,
+                    score_max=36,
+                    score_pct=20 / 36,
+                    details_url="https://vpn.maximkatz.com/vpn/two",
+                    metadata={},
+                ),
+                NormalizedRow(
+                    rank_position=3,
+                    vpn_name="vpn three",
+                    checked_at_raw="непонятный формат",
+                    result_raw="10/36",
+                    score=10,
+                    score_max=36,
+                    score_pct=10 / 36,
+                    details_url="https://vpn.maximkatz.com/vpn/three",
+                    metadata={},
+                ),
+            ],
+            artifacts_dir="artifacts/20260329T100000Z",
+        )
+        result = persist_scrape_result(session=session, scrape_result=scrape_result)
+
+        assert result.status == "created"
+        assert result.checked_at_parsed_count == 1
+        assert result.checked_at_missing_raw_count == 1
+        assert result.checked_at_parse_failed_count == 1
+        assert result.checked_at_parse_failed_samples == ("непонятный формат",)

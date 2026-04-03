@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+from dateutil import parser as date_parser
 from sqlalchemy import Select, desc, select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -65,13 +66,43 @@ def _score_emoji(score_pct: float) -> str:
 
 
 def _checked_at_utc(row: LastSnapshotRow) -> datetime | None:
-    if row.checked_at is None:
+    if row.checked_at is not None:
+        checked_at = row.checked_at
+        if checked_at.tzinfo is None:
+            checked_at = checked_at.replace(tzinfo=timezone.utc)
+        return checked_at.astimezone(timezone.utc)
+
+    if not row.checked_at_raw:
         return None
 
-    checked_at = row.checked_at
-    if checked_at.tzinfo is None:
-        checked_at = checked_at.replace(tzinfo=timezone.utc)
-    return checked_at.astimezone(timezone.utc)
+    normalized = row.checked_at_raw.strip().lower()
+    month_aliases = {
+        "янв": "jan",
+        "фев": "feb",
+        "мар": "mar",
+        "апр": "apr",
+        "мая": "may",
+        "май": "may",
+        "июн": "jun",
+        "июл": "jul",
+        "авг": "aug",
+        "сен": "sep",
+        "сент": "sep",
+        "окт": "oct",
+        "ноя": "nov",
+        "дек": "dec",
+    }
+    for ru_month, en_month in month_aliases.items():
+        normalized = normalized.replace(ru_month, en_month)
+
+    try:
+        parsed = date_parser.parse(normalized, dayfirst=True)
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def upsert_telegram_chat(
