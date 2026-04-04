@@ -12,6 +12,8 @@ from sqlalchemy import Select, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from vpn_rating_watcher.bot.service import (
+    _resolve_chart_path,
+    cleanup_temporary_chart_file,
     get_latest_chart_for_date,
     upsert_telegram_chat,
 )
@@ -105,19 +107,21 @@ def run_daily_posting_job(
                 active_chat_count=active_chat_count,
             )
 
-        if not chart.file_path.exists():
+        original_chart_path = chart.file_path
+        chart_path, error = _resolve_chart_path(session=session, chart=chart)
+        if error:
             active_chat_count = len(session.execute(_active_chats_query()).scalars().all())
             return DailyPostingResult(
                 status="no_chart",
-                message=(
-                    "Chart metadata exists for today, but file is missing on disk: "
-                    f"{chart.file_path}"
-                ),
+                message=error,
                 chart_date=chart.chart_date,
                 posted_count=0,
                 skipped_count=0,
                 active_chat_count=active_chat_count,
             )
+        assert chart_path is not None
+        chart.file_path = chart_path
+        chart.is_temporary = chart_path != original_chart_path
 
         active_chats = session.execute(_active_chats_query()).scalars().all()
         chart_date_label = (
@@ -127,22 +131,25 @@ def run_daily_posting_job(
 
         posted_count = 0
         skipped_count = 0
-        for chat in active_chats:
-            if chat.last_posted_date is not None and chat.last_posted_date >= resolved_today:
-                skipped_count += 1
-                continue
+        try:
+            for chat in active_chats:
+                if chat.last_posted_date is not None and chat.last_posted_date >= resolved_today:
+                    skipped_count += 1
+                    continue
 
-            asyncio.run(
-                sender(
-                    token=token,
-                    chat_id=chat.chat_id,
-                    chart_path=chart.file_path,
-                    caption=caption,
+                asyncio.run(
+                    sender(
+                        token=token,
+                        chat_id=chat.chat_id,
+                        chart_path=chart_path,
+                        caption=caption,
+                    )
                 )
-            )
-            chat.last_posted_date = resolved_today
-            session.commit()
-            posted_count += 1
+                chat.last_posted_date = resolved_today
+                session.commit()
+                posted_count += 1
+        finally:
+            cleanup_temporary_chart_file(chart)
 
         return DailyPostingResult(
             status="ok",

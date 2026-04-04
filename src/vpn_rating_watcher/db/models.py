@@ -82,6 +82,10 @@ class GeneratedChart(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     chart_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     chart_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    range_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    range_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    range_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     file_path: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
