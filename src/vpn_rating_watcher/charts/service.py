@@ -17,6 +17,7 @@ from vpn_rating_watcher.db.models import GeneratedChart, Snapshot, Vpn, VpnSnaps
 matplotlib.use("Agg")
 
 MAIN_LIVE_SOURCE_NAME = "maximkatz"
+CSV_BACKFILL_SOURCE_NAME = "csv_backfill"
 MIXED_SOURCE_NAME = "mixed"
 LINE_CHART_TYPE = "historical_line_chart"
 
@@ -68,8 +69,21 @@ class ChartRegenerationMetadata:
     file_path: Path
 
 
-def _source_filter(source_name: str) -> bool:
-    return source_name != MIXED_SOURCE_NAME
+def _source_names_for_chart(source_name: str) -> tuple[str, ...] | None:
+    if source_name == MIXED_SOURCE_NAME:
+        return None
+    if source_name == MAIN_LIVE_SOURCE_NAME:
+        return (MAIN_LIVE_SOURCE_NAME, CSV_BACKFILL_SOURCE_NAME)
+    return (source_name,)
+
+
+def _apply_source_filter(stmt: Select, *, source_name: str) -> Select:
+    source_names = _source_names_for_chart(source_name)
+    if source_names is None:
+        return stmt
+    if len(source_names) == 1:
+        return stmt.where(Snapshot.source_name == source_names[0])
+    return stmt.where(Snapshot.source_name.in_(source_names))
 
 
 def _effective_row_date():
@@ -85,8 +99,7 @@ def get_max_point_date(
 ) -> date | None:
     effective_row_date = _effective_row_date()
     stmt = select(func.max(effective_row_date)).select_from(VpnSnapshotResult).join(Snapshot)
-    if _source_filter(source_name):
-        stmt = stmt.where(Snapshot.source_name == source_name)
+    stmt = _apply_source_filter(stmt, source_name=source_name)
     raw_max = session.execute(stmt).scalar_one_or_none()
     if not raw_max:
         return None
@@ -161,8 +174,7 @@ def query_daily_latest_scores(
         .where(and_(effective_row_date >= start_date, effective_row_date <= end_date))
     )
 
-    if _source_filter(source_name):
-        ranked = ranked.where(Snapshot.source_name == source_name)
+    ranked = _apply_source_filter(ranked, source_name=source_name)
 
     ranked_subq = ranked.subquery()
     stmt: Select[tuple[str, str, int]] = (
