@@ -36,6 +36,7 @@ jobs:
           else
             echo "✅ OK"
           fi
+          exit 1
 
       - name: Prepare Codex task
         if: failure()
