@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -9,7 +10,11 @@ from sqlalchemy.orm import Session, sessionmaker
 from vpn_rating_watcher.charts.service import LINE_CHART_TYPE, ChartGenerationResult
 from vpn_rating_watcher.db.base import Base
 from vpn_rating_watcher.db.models import GeneratedChart, TelegramChat
-from vpn_rating_watcher.jobs.hourly_sync import run_hourly_sync_job
+from vpn_rating_watcher.jobs.hourly_sync import (
+    SnapshotDiffSummary,
+    _build_update_message,
+    run_hourly_sync_job,
+)
 from vpn_rating_watcher.scraper.models import NormalizedRow, ScrapeResult
 
 
@@ -175,4 +180,53 @@ def test_hourly_sync_updated_sends_notifications_and_diff() -> None:
     assert updated.new_count == 0
     assert updated.removed_count == 0
     assert updated.notified_count == 1
-    assert any("Изменения: changed=1, new=0, removed=0" in text for text in sent_messages)
+    updated_message = sent_messages[-1]
+    assert "Изменения:" not in updated_message
+    assert "Изменения: changed=1, new=0, removed=0" not in updated_message
+    assert "- chg: VPN A #1->1 score 30->31" in updated_message
+    assert "Source:" not in updated_message
+
+
+def test_build_update_message_without_top_header_when_all_changes_fit() -> None:
+    chart_stub = SimpleNamespace(
+        chart_id=22,
+        end_date=datetime(2026, 3, 29, tzinfo=timezone.utc).date(),
+    )
+    message = _build_update_message(
+        saved=SimpleNamespace(snapshot_id=11),
+        chart=chart_stub,
+        diff=SnapshotDiffSummary(
+            changed_count=1,
+            new_count=1,
+            removed_count=1,
+            top_changes=[
+                "chg: VPN A #2->1 score 30->31",
+                "new: #3 VPN C (19)",
+                "removed: #4 VPN D (14)",
+            ],
+        ),
+    )
+
+    assert "Top changes:" not in message
+    assert "Изменения: changed=1, new=1, removed=1" in message
+    assert "- removed: #4 VPN D (14)" in message
+
+
+def test_build_update_message_omits_changes_line_when_only_changed_and_all_fit() -> None:
+    chart_stub = SimpleNamespace(
+        chart_id=22,
+        end_date=datetime(2026, 3, 29, tzinfo=timezone.utc).date(),
+    )
+    message = _build_update_message(
+        saved=SimpleNamespace(snapshot_id=11),
+        chart=chart_stub,
+        diff=SnapshotDiffSummary(
+            changed_count=1,
+            new_count=0,
+            removed_count=0,
+            top_changes=["chg: VPN A #2->1 score 30->31"],
+        ),
+    )
+
+    assert "Изменения:" not in message
+    assert "Top changes:" not in message
