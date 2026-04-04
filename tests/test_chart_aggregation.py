@@ -277,8 +277,84 @@ def test_query_daily_latest_scores_filters_source_name() -> None:
             source_name="mixed",
         )
 
-        assert live_rows[0].score == 32
+        assert live_rows[0].score == 36
         assert mixed_rows[0].score == 36
+
+
+def test_main_source_chart_range_includes_csv_backfill_and_live_history() -> None:
+    with _session() as session:
+        vpn = Vpn(name="VPN A", normalized_name="vpn a")
+        session.add(vpn)
+        session.flush()
+
+        backfill = Snapshot(
+            source_name="csv_backfill",
+            source_url="https://local.import/csv-backfill",
+            fetched_at=datetime(2026, 1, 10, 8, 0, tzinfo=timezone.utc),
+            content_hash="csv-hash-old",
+            raw_payload_json={},
+        )
+        live = Snapshot(
+            source_name="maximkatz",
+            source_url="https://vpn.maximkatz.com/",
+            fetched_at=datetime(2026, 3, 20, 8, 0, tzinfo=timezone.utc),
+            content_hash="live-hash-new",
+            raw_payload_json={},
+        )
+        session.add_all([backfill, live])
+        session.flush()
+
+        session.add_all(
+            [
+                VpnSnapshotResult(
+                    snapshot_id=backfill.id,
+                    vpn_id=vpn.id,
+                    rank_position=1,
+                    checked_at=datetime(2026, 1, 10, 8, 0, tzinfo=timezone.utc),
+                    checked_at_raw="10.01.2026 08:00",
+                    result_raw="28/36",
+                    score=28,
+                    score_max=36,
+                    score_pct=28 / 36,
+                    price_raw=None,
+                    traffic_raw=None,
+                    devices_raw=None,
+                    details_url=None,
+                ),
+                VpnSnapshotResult(
+                    snapshot_id=live.id,
+                    vpn_id=vpn.id,
+                    rank_position=1,
+                    checked_at=datetime(2026, 3, 20, 8, 0, tzinfo=timezone.utc),
+                    checked_at_raw="20.03.2026 08:00",
+                    result_raw="33/36",
+                    score=33,
+                    score_max=36,
+                    score_pct=33 / 36,
+                    price_raw=None,
+                    traffic_raw=None,
+                    devices_raw=None,
+                    details_url=None,
+                ),
+            ]
+        )
+        session.commit()
+
+        rows = query_daily_latest_scores(
+            session=session,
+            start_date=date(2026, 1, 10),
+            end_date=date(2026, 3, 20),
+            source_name="maximkatz",
+        )
+        dates = _effective_chart_dates(
+            rows=rows,
+            fallback_start=date(2026, 1, 10),
+            fallback_end=date(2026, 3, 20),
+        )
+
+        assert [row.point_date for row in rows] == [date(2026, 1, 10), date(2026, 3, 20)]
+        assert dates[0] == date(2026, 1, 10)
+        assert dates[-1] == date(2026, 3, 20)
 
 
 def test_query_daily_latest_scores_binds_date_params_for_postgresql() -> None:
