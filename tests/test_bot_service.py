@@ -55,11 +55,19 @@ def test_get_today_or_latest_chart_prefers_today() -> None:
         older = GeneratedChart(
             chart_date=date(2026, 3, 28),
             chart_type=LINE_CHART_TYPE,
+            source_name="maximkatz",
+            range_start_date=date(2026, 3, 28),
+            range_end_date=date(2026, 3, 28),
+            range_days=1,
             file_path="artifacts/charts/older.png",
         )
         today = GeneratedChart(
             chart_date=date(2026, 3, 29),
             chart_type=LINE_CHART_TYPE,
+            source_name="maximkatz",
+            range_start_date=date(2026, 3, 29),
+            range_end_date=date(2026, 3, 29),
+            range_days=1,
             file_path="artifacts/charts/today.png",
         )
         session.add_all([older, today])
@@ -75,11 +83,19 @@ def test_get_today_or_latest_chart_falls_back_to_latest() -> None:
         older = GeneratedChart(
             chart_date=date(2026, 3, 28),
             chart_type=LINE_CHART_TYPE,
+            source_name="maximkatz",
+            range_start_date=date(2026, 3, 28),
+            range_end_date=date(2026, 3, 28),
+            range_days=1,
             file_path="artifacts/charts/older.png",
         )
         newest = GeneratedChart(
             chart_date=date(2026, 3, 29),
             chart_type=LINE_CHART_TYPE,
+            source_name="maximkatz",
+            range_start_date=date(2026, 3, 29),
+            range_end_date=date(2026, 3, 29),
+            range_days=1,
             file_path="artifacts/charts/newest.png",
         )
         session.add_all([older, newest])
