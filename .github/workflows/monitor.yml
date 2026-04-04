@@ -24,6 +24,7 @@ jobs:
 
           if grep -i "error\|exception\|failed" logs.txt; then
             echo "❌ ERROR FOUND"
+            exit 1
 
             echo "### TASK FOR CODEX"
             echo "Fix the error from logs above. 
@@ -32,3 +33,10 @@ jobs:
           else
             echo "✅ OK"
           fi
+      
+      - name: Create issue if error
+        if: failure()
+        uses: peter-evans/create-issue-from-file@v4
+        with:
+          title: "Auto: fix Railway error"
+          content-filepath: logs.txt
