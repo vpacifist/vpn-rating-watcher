@@ -36,10 +36,17 @@ jobs:
           else
             echo "✅ OK"
           fi
-      
-      - name: Create issue if error
+
+      - name: Prepare Codex task
+        if: failure()
+        run: |
+          echo "@codex Fix the error described below. Provide minimal patch." > codex_task.txt
+          cat logs.txt >> codex_task.txt
+
+      - name: Create issue for Codex
         if: failure()
         uses: peter-evans/create-issue-from-file@v4
         with:
           title: "Auto: fix Railway error"
-          content-filepath: logs.txt
+          content-filepath: codex_task.txt
+          labels: bug, auto-fix
