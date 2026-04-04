@@ -11,7 +11,21 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Read latest logs
+      - name: Read logs
+        id: logs
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway logs --service=vpn-rating-watcher --lines 200
+        run: |
+          railway logs --service=vpn-rating-watcher --lines 200 > logs.txt
+
+      - name: Analyze logs
+        run: |
+          echo "### LOGS"
+          cat logs.txt
+
+          echo "### ANALYSIS"
+          if grep -i "error\|exception\|failed" logs.txt; then
+            echo "❌ Найдена ошибка"
+          else
+            echo "✅ Ошибок не найдено"
+          fi
