@@ -403,24 +403,24 @@ def test_compute_label_positions_respects_bounds() -> None:
 
 
 def test_regenerate_chart_to_temp_file_uses_metadata_range_and_source() -> None:
-    with _session() as session:
-        with (
-            patch("vpn_rating_watcher.charts.service.query_daily_latest_scores") as query_rows,
-            patch("vpn_rating_watcher.charts.service._render_line_chart") as render_chart,
-        ):
-            query_rows.return_value = []
-            output = regenerate_chart_to_temp_file(
-                session=session,
-                metadata=ChartRegenerationMetadata(
-                    chart_type="historical_line_chart",
-                    source_name="mixed",
-                    range_start_date=date(2026, 3, 10),
-                    range_end_date=date(2026, 3, 15),
-                    range_days=6,
-                    chart_date=date(2026, 3, 15),
-                    file_path=Path("artifacts/charts/linechart_mixed_2026-03-10_2026-03-15.png"),
-                ),
-            )
+    with (
+        _session() as session,
+        patch("vpn_rating_watcher.charts.service.query_daily_latest_scores") as query_rows,
+        patch("vpn_rating_watcher.charts.service._render_line_chart") as render_chart,
+    ):
+        query_rows.return_value = []
+        output = regenerate_chart_to_temp_file(
+            session=session,
+            metadata=ChartRegenerationMetadata(
+                chart_type="historical_line_chart",
+                source_name="mixed",
+                range_start_date=date(2026, 3, 10),
+                range_end_date=date(2026, 3, 15),
+                range_days=6,
+                chart_date=date(2026, 3, 15),
+                file_path=Path("artifacts/charts/linechart_mixed_2026-03-10_2026-03-15.png"),
+            ),
+        )
 
     assert output.exists()
     assert query_rows.call_args is not None
