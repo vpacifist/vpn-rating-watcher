@@ -43,6 +43,10 @@ def test_post_daily_is_idempotent_for_same_day(tmp_path: Path) -> None:
             GeneratedChart(
                 chart_date=date(2026, 3, 29),
                 chart_type=LINE_CHART_TYPE,
+                source_name="maximkatz",
+                range_start_date=date(2026, 3, 29),
+                range_end_date=date(2026, 3, 29),
+                range_days=1,
                 file_path=str(chart_path),
             )
         )
@@ -86,6 +90,10 @@ def test_post_daily_skips_inactive_chats(tmp_path: Path) -> None:
             GeneratedChart(
                 chart_date=date(2026, 3, 29),
                 chart_type=LINE_CHART_TYPE,
+                source_name="maximkatz",
+                range_start_date=date(2026, 3, 29),
+                range_end_date=date(2026, 3, 29),
+                range_days=1,
                 file_path=str(chart_path),
             )
         )

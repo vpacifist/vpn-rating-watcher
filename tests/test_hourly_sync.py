@@ -106,6 +106,10 @@ def _realistic_chart_result(session: Session, chart_path: Path) -> ChartGenerati
     chart = GeneratedChart(
         chart_type=LINE_CHART_TYPE,
         chart_date=datetime(2026, 3, 29, tzinfo=timezone.utc).date(),
+        source_name="maximkatz",
+        range_start_date=datetime(2026, 3, 29, tzinfo=timezone.utc).date(),
+        range_end_date=datetime(2026, 3, 29, tzinfo=timezone.utc).date(),
+        range_days=1,
         file_path=str(chart_path),
     )
     session.add(chart)
