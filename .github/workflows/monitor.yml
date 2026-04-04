@@ -20,12 +20,15 @@ jobs:
 
       - name: Analyze logs
         run: |
-          echo "### LOGS"
-          cat logs.txt
-
           echo "### ANALYSIS"
+
           if grep -i "error\|exception\|failed" logs.txt; then
-            echo "❌ Найдена ошибка"
+            echo "❌ ERROR FOUND"
+
+            echo "### TASK FOR CODEX"
+            echo "Fix the error from logs above. 
+            Analyze root cause and provide a minimal patch.
+            Do not rewrite unrelated code."
           else
-            echo "✅ Ошибок не найдено"
+            echo "✅ OK"
           fi
