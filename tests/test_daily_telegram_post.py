@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import create_engine, select
@@ -8,7 +8,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from vpn_rating_watcher.charts.service import LINE_CHART_TYPE
 from vpn_rating_watcher.db.base import Base
-from vpn_rating_watcher.db.models import GeneratedChart, TelegramChat
+from vpn_rating_watcher.db.models import (
+    GeneratedChart,
+    Snapshot,
+    TelegramChat,
+    Vpn,
+    VpnSnapshotResult,
+)
 from vpn_rating_watcher.jobs.daily_telegram_post import (
     parse_default_chat_ids,
     run_daily_posting_job,
@@ -137,3 +143,71 @@ def test_post_daily_exits_cleanly_when_today_chart_missing() -> None:
     assert sends == []
     assert [chat.chat_id for chat in chats] == ["1001", "1002"]
     assert all(chat.last_posted_date is None for chat in chats)
+
+
+def test_post_daily_regenerates_chart_when_file_missing_on_disk() -> None:
+    session_factory = _session_factory()
+    with session_factory() as session:
+        snapshot = Snapshot(
+            source_name="maximkatz",
+            source_url="https://vpn.maximkatz.com/",
+            fetched_at=datetime(2026, 3, 29, 12, 0, tzinfo=timezone.utc),
+            content_hash="daily-regenerate",
+            raw_payload_json={},
+        )
+        session.add(snapshot)
+        session.flush()
+
+        vpn = Vpn(name="VPN A", normalized_name="vpn a")
+        session.add(vpn)
+        session.flush()
+        session.add(
+            VpnSnapshotResult(
+                snapshot_id=snapshot.id,
+                vpn_id=vpn.id,
+                rank_position=1,
+                checked_at=datetime(2026, 3, 29, 12, 0, tzinfo=timezone.utc),
+                checked_at_raw=None,
+                result_raw="34/36",
+                score=34,
+                score_max=36,
+                score_pct=34 / 36,
+                price_raw=None,
+                traffic_raw=None,
+                devices_raw=None,
+                details_url=None,
+            )
+        )
+        session.add(
+            GeneratedChart(
+                chart_date=date(2026, 3, 29),
+                chart_type=LINE_CHART_TYPE,
+                source_name="maximkatz",
+                range_start_date=date(2026, 3, 1),
+                range_end_date=date(2026, 3, 29),
+                range_days=29,
+                file_path="artifacts/charts/missing-chart.png",
+            )
+        )
+        session.add(
+            TelegramChat(chat_id="1001", chat_type="private", title=None, is_active=True)
+        )
+        session.commit()
+
+    sends: list[Path] = []
+
+    async def _fake_send(**kwargs: str | Path) -> None:
+        sends.append(Path(kwargs["chart_path"]))
+
+    result = run_daily_posting_job(
+        session_factory=session_factory,
+        token="test-token",
+        default_chat_ids_raw=None,
+        today=date(2026, 3, 29),
+        send_chart_func=_fake_send,
+    )
+
+    assert result.status == "ok"
+    assert result.posted_count == 1
+    assert len(sends) == 1
+    assert not sends[0].exists()

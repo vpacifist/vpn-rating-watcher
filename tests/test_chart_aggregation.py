@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 from sqlalchemy import create_engine
@@ -8,12 +10,14 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
 from vpn_rating_watcher.charts.service import (
+    ChartRegenerationMetadata,
     DailyScoreRow,
     _compute_label_positions,
     _effective_chart_dates,
     _matrix_from_rows,
     get_max_point_date,
     query_daily_latest_scores,
+    regenerate_chart_to_temp_file,
 )
 from vpn_rating_watcher.db.base import Base
 from vpn_rating_watcher.db.models import Snapshot, Vpn, VpnSnapshotResult
@@ -396,3 +400,32 @@ def test_compute_label_positions_respects_bounds() -> None:
 
     assert positions[0] >= 0.4
     assert positions[1] <= 36.6
+
+
+def test_regenerate_chart_to_temp_file_uses_metadata_range_and_source() -> None:
+    with _session() as session:
+        with (
+            patch("vpn_rating_watcher.charts.service.query_daily_latest_scores") as query_rows,
+            patch("vpn_rating_watcher.charts.service._render_line_chart") as render_chart,
+        ):
+            query_rows.return_value = []
+            output = regenerate_chart_to_temp_file(
+                session=session,
+                metadata=ChartRegenerationMetadata(
+                    chart_type="historical_line_chart",
+                    source_name="mixed",
+                    range_start_date=date(2026, 3, 10),
+                    range_end_date=date(2026, 3, 15),
+                    range_days=6,
+                    chart_date=date(2026, 3, 15),
+                    file_path=Path("artifacts/charts/linechart_mixed_2026-03-10_2026-03-15.png"),
+                ),
+            )
+
+    assert output.exists()
+    assert query_rows.call_args is not None
+    assert query_rows.call_args.kwargs["source_name"] == "mixed"
+    assert query_rows.call_args.kwargs["start_date"] == date(2026, 3, 10)
+    assert query_rows.call_args.kwargs["end_date"] == date(2026, 3, 15)
+    render_chart.assert_called_once()
+    output.unlink(missing_ok=True)

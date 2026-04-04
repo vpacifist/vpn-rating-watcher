@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+import re
+from tempfile import NamedTemporaryFile
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -53,6 +55,17 @@ class ChartGenerationResult:
     vpn_count: int
     day_count: int
     chart_id: int
+
+
+@dataclass(slots=True)
+class ChartRegenerationMetadata:
+    chart_type: str
+    source_name: str | None
+    range_start_date: date | None
+    range_end_date: date | None
+    range_days: int | None
+    chart_date: date | None
+    file_path: Path
 
 
 def _source_filter(source_name: str) -> bool:
@@ -407,6 +420,10 @@ def generate_historical_line_chart(
     chart = GeneratedChart(
         chart_date=date_range.end_date,
         chart_type=LINE_CHART_TYPE,
+        source_name=source_name,
+        range_start_date=date_range.start_date,
+        range_end_date=date_range.end_date,
+        range_days=(date_range.end_date - date_range.start_date).days + 1,
         file_path=str(output_path),
     )
     session.add(chart)
@@ -425,3 +442,72 @@ def generate_historical_line_chart(
 
 
 generate_historical_heatmap = generate_historical_line_chart
+
+
+def _metadata_from_legacy_chart_filename(path: Path) -> tuple[str | None, date | None, date | None]:
+    match = re.match(
+        r"^linechart_(?P<source>.+)_(?P<start>\d{4}-\d{2}-\d{2})_(?P<end>\d{4}-\d{2}-\d{2})\.png$",
+        path.name,
+    )
+    if not match:
+        return None, None, None
+    return (
+        match.group("source"),
+        date.fromisoformat(match.group("start")),
+        date.fromisoformat(match.group("end")),
+    )
+
+
+def regenerate_chart_to_temp_file(
+    session: Session,
+    *,
+    metadata: ChartRegenerationMetadata,
+) -> Path:
+    if metadata.chart_type != LINE_CHART_TYPE:
+        raise ValueError(f"Unsupported chart type for regeneration: {metadata.chart_type}")
+
+    source_name = metadata.source_name
+    start_date = metadata.range_start_date
+    end_date = metadata.range_end_date or metadata.chart_date
+
+    if start_date is None or end_date is None or source_name is None:
+        legacy_source, legacy_start, legacy_end = _metadata_from_legacy_chart_filename(
+            metadata.file_path
+        )
+        source_name = source_name or legacy_source
+        start_date = start_date or legacy_start
+        end_date = end_date or legacy_end
+
+    if end_date is None and metadata.chart_date is not None:
+        end_date = metadata.chart_date
+    if start_date is None and metadata.range_days and end_date is not None:
+        start_date = end_date - timedelta(days=metadata.range_days - 1)
+
+    if start_date is None or end_date is None or source_name is None:
+        raise ValueError("Missing chart metadata (source/date range) for regeneration.")
+
+    with NamedTemporaryFile(prefix="vrw_chart_", suffix=".png", delete=False) as tmp_file:
+        output_path = tmp_file.name
+
+    date_range = DateRange(start_date=start_date, end_date=end_date)
+    rows = query_daily_latest_scores(
+        session=session,
+        start_date=date_range.start_date,
+        end_date=date_range.end_date,
+        source_name=source_name,
+    )
+    dates = _effective_chart_dates(
+        rows,
+        fallback_start=date_range.start_date,
+        fallback_end=date_range.end_date,
+    )
+    matrix, vpn_names = _matrix_from_rows(rows=rows, dates=dates, top_n=None)
+
+    _render_line_chart(
+        matrix=matrix,
+        vpn_names=vpn_names,
+        dates=dates,
+        source_name=source_name,
+        output_path=Path(output_path),
+    )
+    return Path(output_path)

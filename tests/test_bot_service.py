@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from sqlalchemy import create_engine, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from vpn_rating_watcher.bot.service import (
+    TelegramBotService,
     format_last_snapshot_summary,
     get_last_snapshot_summary,
     get_today_or_latest_chart,
@@ -27,6 +29,12 @@ def _session() -> Session:
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     return Session(engine)
+
+
+def _session_factory() -> sessionmaker[Session]:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    return sessionmaker(engine)
 
 
 def test_upsert_telegram_chat_creates_and_updates() -> None:
@@ -229,3 +237,93 @@ def test_last_snapshot_summary_shows_end_date_for_cross_day_freshness_range() ->
         assert summary is not None
         text = format_last_snapshot_summary(summary)
         assert "🕒 Freshness: 2 Apr, 21:42–3 Apr, 12:04 UTC" in text
+
+
+def test_load_latest_chart_regenerates_file_when_metadata_exists_but_file_missing() -> None:
+    session_factory = _session_factory()
+    with session_factory() as session:
+        snapshot = Snapshot(
+            source_name="maximkatz",
+            source_url="https://vpn.maximkatz.com/",
+            fetched_at=datetime(2026, 3, 29, 12, 0, tzinfo=timezone.utc),
+            content_hash="chart-regenerate",
+            raw_payload_json={},
+        )
+        session.add(snapshot)
+        session.flush()
+
+        vpn = Vpn(name="VPN A", normalized_name="vpn a")
+        session.add(vpn)
+        session.flush()
+        session.add(
+            VpnSnapshotResult(
+                snapshot_id=snapshot.id,
+                vpn_id=vpn.id,
+                rank_position=1,
+                checked_at=datetime(2026, 3, 29, 12, 0, tzinfo=timezone.utc),
+                checked_at_raw=None,
+                result_raw="34/36",
+                score=34,
+                score_max=36,
+                score_pct=34 / 36,
+                price_raw=None,
+                traffic_raw=None,
+                devices_raw=None,
+                details_url=None,
+            )
+        )
+        session.add(
+            GeneratedChart(
+                chart_date=date(2026, 3, 29),
+                chart_type=LINE_CHART_TYPE,
+                source_name="mixed",
+                range_start_date=date(2026, 3, 20),
+                range_end_date=date(2026, 3, 29),
+                range_days=10,
+                file_path="artifacts/charts/missing-from-other-service.png",
+            )
+        )
+        session.commit()
+
+    service = TelegramBotService(session_factory=session_factory)
+    chart, error = service.load_latest_chart()
+
+    assert error is None
+    assert chart is not None
+    assert chart.file_path.exists()
+
+
+def test_load_latest_chart_passes_generated_chart_metadata_for_regeneration(tmp_path: Path) -> None:
+    session_factory = _session_factory()
+    with session_factory() as session:
+        session.add(
+            GeneratedChart(
+                chart_date=date(2026, 3, 29),
+                chart_type=LINE_CHART_TYPE,
+                source_name="mixed",
+                range_start_date=date(2026, 3, 20),
+                range_end_date=date(2026, 3, 29),
+                range_days=10,
+                file_path="artifacts/charts/missing-metadata-source.png",
+            )
+        )
+        session.commit()
+
+    fake_output = tmp_path / "regenerated.png"
+    fake_output.write_bytes(b"png")
+    service = TelegramBotService(session_factory=session_factory)
+
+    with patch("vpn_rating_watcher.bot.service.regenerate_chart_to_temp_file") as regenerate:
+        regenerate.return_value = fake_output
+        chart, error = service.load_latest_chart()
+
+    assert error is None
+    assert chart is not None
+    assert chart.file_path == fake_output
+    assert chart.is_temporary is True
+    assert regenerate.call_args is not None
+    metadata = regenerate.call_args.kwargs["metadata"]
+    assert metadata.source_name == "mixed"
+    assert metadata.range_start_date == date(2026, 3, 20)
+    assert metadata.range_end_date == date(2026, 3, 29)
+    assert metadata.range_days == 10

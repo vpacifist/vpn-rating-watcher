@@ -5,7 +5,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import FSInputFile, Message
 from sqlalchemy.orm import Session, sessionmaker
 
-from vpn_rating_watcher.bot.service import TelegramBotService
+from vpn_rating_watcher.bot.service import TelegramBotService, cleanup_temporary_chart_file
 
 
 def _commands_text() -> str:
@@ -51,11 +51,16 @@ def build_router(service: TelegramBotService) -> Router:
             await message.answer(error)
             return
         assert chart is not None
-        caption = f"Chart date: {chart.chart_date.isoformat() if chart.chart_date else 'unknown'}"
-        await message.answer_photo(
-            photo=FSInputFile(chart.file_path),
-            caption=caption,
-        )
+        try:
+            caption = (
+                f"Chart date: {chart.chart_date.isoformat() if chart.chart_date else 'unknown'}"
+            )
+            await message.answer_photo(
+                photo=FSInputFile(chart.file_path),
+                caption=caption,
+            )
+        finally:
+            cleanup_temporary_chart_file(chart)
 
     @local_router.message(Command("chart"))
     async def chart_handler(message: Message) -> None:
@@ -65,12 +70,15 @@ def build_router(service: TelegramBotService) -> Router:
             await message.answer(error)
             return
         assert chart is not None
-        chart_date_label = chart.chart_date.isoformat() if chart.chart_date else "unknown"
-        caption = f"Latest chart ({chart_date_label})"
-        await message.answer_photo(
-            photo=FSInputFile(chart.file_path),
-            caption=caption,
-        )
+        try:
+            chart_date_label = chart.chart_date.isoformat() if chart.chart_date else "unknown"
+            caption = f"Latest chart ({chart_date_label})"
+            await message.answer_photo(
+                photo=FSInputFile(chart.file_path),
+                caption=caption,
+            )
+        finally:
+            cleanup_temporary_chart_file(chart)
 
     @local_router.message(Command("last"))
     async def last_handler(message: Message) -> None:
