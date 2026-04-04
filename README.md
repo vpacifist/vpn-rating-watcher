@@ -1,19 +1,19 @@
 # vpn-rating-watcher
 
-MVP service scaffold for monitoring https://vpn.maximkatz.com/ from the **rendered browser DOM**.
+Каркас MVP-сервиса для мониторинга https://vpn.maximkatz.com/ на основе **рендеренного DOM в браузере**.
 
-Current implementation scope:
-- ✅ Rendered DOM scraping with Playwright
-- ✅ Deterministic normalization and content hash
-- ✅ Database persistence layer for snapshots and VPN row results
-- ✅ Idempotent save behavior (`no_change` on same latest hash)
-- ✅ Historical backfill import from manual CSV transcription
-- ✅ Historical multi-line score chart generation (PNG)
-- ✅ Telegram bot polling commands (`/start`, `/help`, `/today`, `/chart`, `/last`)
-- ✅ Daily Telegram posting job command (`vrw post-daily`)
-- ✅ Railway-ready deployment and scheduler wiring documentation
+Текущий функциональный объём:
+- ✅ Скрапинг рендеренного DOM через Playwright
+- ✅ Детерминированная нормализация и content hash
+- ✅ Слой сохранения в БД для снапшотов и строк результатов VPN
+- ✅ Идемпотентное сохранение (`no_change`, если хэш совпадает с последним)
+- ✅ Импорт исторических данных из вручную подготовленного CSV
+- ✅ Генерация исторических multi-line графиков (PNG)
+- ✅ Команды Telegram-бота в polling-режиме (`/start`, `/help`, `/today`, `/chart`, `/last`)
+- ✅ Команда ежедневной публикации в Telegram (`vrw post-daily`)
+- ✅ Документация по деплою в Railway и настройке расписаний
 
-## Local setup
+## Локальная установка
 
 ```bash
 python3.12 -m venv .venv
@@ -23,140 +23,139 @@ playwright install chromium
 cp .env.example .env
 ```
 
-## Database setup
+## Настройка базы данных
 
-1. Ensure PostgreSQL is running and `DATABASE_URL` is set in `.env`.
-2. Run migrations:
+1. Убедитесь, что PostgreSQL запущен и `DATABASE_URL` задан в `.env`.
+2. Примените миграции:
 
 ```bash
 alembic upgrade head
 ```
 
-## CLI commands
+## CLI-команды
 
-Scrape only (no DB write):
+Только скрапинг (без записи в БД):
 
 ```bash
 vrw scrape
 ```
 
-Scrape and save transactionally:
+Скрапинг и транзакционное сохранение:
 
 ```bash
 vrw scrape-save --source-name maximkatz
 ```
 
-Latest snapshot summary:
+Сводка по последнему снапшоту:
 
 ```bash
 vrw latest-snapshot --source-name maximkatz
 ```
 
-If the latest snapshot for a source has the same content hash, `scrape-save` returns `status: "no_change"` and does not duplicate rows.
+Если у последнего снапшота источника такой же content hash, `scrape-save` возвращает `status: "no_change"` и не дублирует строки.
 
-Import historical data from CSV:
+Импорт исторических данных из CSV:
 
 ```bash
 vrw import-csv --path examples/history_import.csv
 ```
 
-Generate historical score line chart (default last 30 days from latest available snapshot):
+Генерация исторического графика оценок (по умолчанию — последние 30 дней от наиболее свежего доступного снапшота):
 
 ```bash
 vrw generate-chart --days 30
 ```
 
-Generate chart using explicit date range:
+Генерация графика для явного диапазона дат:
 
 ```bash
 vrw generate-chart --from 2026-03-01 --to 2026-03-29
 ```
 
-Repair persisted `checked_at` timestamps from stored `checked_at_raw` values (for already-saved rows):
+Исправление сохранённых `checked_at` по значениям из `checked_at_raw` (для уже записанных строк):
 
 ```bash
 vrw repair-checked-at --source-name maximkatz
 ```
 
-Preview repair counts without writing changes:
+Предпросмотр количества исправлений без записи в БД:
 
 ```bash
 vrw repair-checked-at --source-name maximkatz --dry-run
 ```
 
-Useful options:
-- `--top-n 20` to keep only the top 20 VPN rows (sorted by latest score descending)
-- `--source-name csv_backfill` to chart only imported historical snapshots
-- `--source-name mixed` to combine all available sources
-- `--output artifacts/charts/custom.png` to customize destination path
+Полезные опции:
+- `--top-n 20` — оставить только топ-20 строк VPN (сортировка по убыванию актуального score)
+- `--source-name csv_backfill` — строить график только по импортированным историческим снапшотам
+- `--source-name mixed` — объединить все доступные источники
+- `--output artifacts/charts/custom.png` — задать путь сохранения
 
-The command prints a structured JSON summary and persists chart metadata in `generated_chart`.
+Команда печатает структурированную JSON-сводку и сохраняет метаданные графика в `generated_chart`.
 
-Run Telegram bot polling:
+Запуск polling-бота Telegram:
 
 ```bash
 vrw bot
 ```
 
-The bot reads `TELEGRAM_BOT_TOKEN` from `.env`. If missing, `vrw bot` exits with a clear error.
+Бот читает `TELEGRAM_BOT_TOKEN` из `.env`. Если переменная не задана, `vrw bot` завершится с понятной ошибкой.
 
-Run daily Telegram posting job:
+Запуск ежедневной публикации в Telegram:
 
 ```bash
 vrw post-daily
 ```
 
-Behavior of `vrw post-daily`:
-- Reads `TELEGRAM_BOT_TOKEN` from `.env` and fails clearly if it is missing.
-- Checks for a chart in `generated_chart` with `chart_date=today` (UTC date).
-- If today's chart is missing, exits cleanly without sending messages.
-- Sends today's chart image with short caption (`Daily chart: YYYY-MM-DD`) to active chats only (`telegram_chat.is_active=true`).
-- Is idempotent: only sends when `last_posted_date` is older than today, then updates `last_posted_date=today`.
-- Safe to rerun multiple times a day without duplicate posts.
-- Supports optional `TELEGRAM_DEFAULT_CHAT_IDS` env var (comma-separated chat IDs). On run, those IDs are upserted into `telegram_chat` as active chats so they can receive posts.
+Поведение `vrw post-daily`:
+- Читает `TELEGRAM_BOT_TOKEN` из `.env` и явно падает, если переменная отсутствует.
+- Ищет график в `generated_chart` с `chart_date=today` (дата UTC).
+- Если графика за сегодня нет, корректно завершается без отправки сообщений.
+- Отправляет изображение графика за сегодня с короткой подписью (`Daily chart: YYYY-MM-DD`) только активным чатам (`telegram_chat.is_active=true`).
+- Идемпотентна: отправляет только если `last_posted_date` меньше сегодняшней даты, затем обновляет `last_posted_date=today`.
+- Безопасна для повторных запусков в течение дня — дубликатов не будет.
+- Поддерживает необязательную переменную `TELEGRAM_DEFAULT_CHAT_IDS` (список chat ID через запятую). Во время запуска эти ID upsert-ятся в `telegram_chat` как активные чаты для получения постов.
 
-Run hourly sync job (scrape + conditional chart rebuild + Telegram update notification):
+Запуск почасовой синхронизации (скрапинг + условная пересборка графика + уведомление в Telegram):
 
 ```bash
 vrw sync-hourly
 ```
 
-Behavior of `vrw sync-hourly`:
-- Scrapes source page and persists snapshot (`scrape-save` behavior).
-- If content hash is unchanged, exits with `no_change` and does not rebuild chart.
-- If content changed, rebuilds chart (`generate-chart` behavior) and stores chart metadata.
-- Sends a Telegram text update to active chats with a compact change summary (`changed/new/removed`).
-- Emits structured logs (start/no_change/updated) for troubleshooting.
+Поведение `vrw sync-hourly`:
+- Скрапит страницу-источник и сохраняет снапшот (поведение `scrape-save`).
+- Если content hash не изменился, завершает работу с `no_change` и не пересобирает график.
+- Если контент изменился, пересобирает график (поведение `generate-chart`) и сохраняет метаданные графика.
+- Отправляет текстовое уведомление в Telegram активным чатам с компактной сводкой изменений (`changed/new/removed`).
+- Пишет структурированные логи (`start/no_change/updated`) для диагностики.
 
+## Формат исторического CSV для backfill
 
-## Historical CSV backfill format
+Используйте CSV в UTF-8 с заголовком.
 
-Use UTF-8 CSV with a header row.
-
-Required columns:
-- `snapshot_date` (ISO date, `YYYY-MM-DD`)
+Обязательные столбцы:
+- `snapshot_date` (ISO-дата, `YYYY-MM-DD`)
 - `vpn_name`
 - `checked_at_raw`
-- `result_raw` (for example `34/36` or `34 / 36`)
+- `result_raw` (например, `34/36` или `34 / 36`)
 
-Optional columns:
+Необязательные столбцы:
 - `price_raw`
 - `traffic_raw`
 - `devices_raw`
 - `details_url`
 
-Import behavior:
-- Rows are grouped into one logical snapshot per `snapshot_date`.
-- Imported snapshots use source name `csv_backfill` by default.
-- `result_raw` is parsed into `score`, `score_max`, and `score_pct`.
-- Snapshot content hash is deterministic and based on normalized imported rows.
-- Import is idempotent: rerunning the same CSV does not duplicate snapshots or rows.
+Поведение импорта:
+- Строки группируются в один логический снапшот на каждый `snapshot_date`.
+- Импортированные снапшоты по умолчанию используют source name `csv_backfill`.
+- `result_raw` парсится в `score`, `score_max` и `score_pct`.
+- Content hash снапшота детерминированный и строится из нормализованных импортированных строк.
+- Импорт идемпотентен: повторный запуск с тем же CSV не создаёт дубликаты снапшотов и строк.
 
-See sample file: `examples/history_import.csv`.
+Пример файла: `examples/history_import.csv`.
 
-## Persistence schema
+## Схема хранения данных
 
-Implemented tables:
+Реализованные таблицы:
 - `vpn`
 - `snapshot`
 - `vpn_snapshot_result`
@@ -165,121 +164,121 @@ Implemented tables:
 
 ## CI
 
-GitHub Actions runs on every `push` and `pull_request`:
+GitHub Actions запускается на каждый `push` и `pull_request`:
 - Python 3.12
 - `pip install -e '.[dev]'`
 - `python -m playwright install --with-deps chromium`
 - `ruff check .`
 - `pytest`
 
-CI scraper smoke test is deterministic: it uses static HTML with Playwright `page.set_content(...)` rather than the live site.
+Smoke-тест скрапера в CI детерминированный: используется статический HTML через Playwright `page.set_content(...)`, а не live-сайт.
 
-## Railway deployment
+## Деплой в Railway
 
-This repository includes a Railway-ready `Dockerfile` and `railway.json`.
+В репозитории уже есть готовые `Dockerfile` и `railway.json` для Railway.
 
-### 1) Create services/jobs
+### 1) Создайте сервисы/джобы
 
-Use one repo and create three Railway services:
+Используйте один репозиторий и создайте три Railway-сервиса:
 
-1. **Bot service** (long-running worker)
-   - Start command: `vrw bot`
-2. **Sync cron job**
-   - Start command: `vrw sync-hourly`
-   - Schedule: `0 */6 * * *` (4 times/day, every 6 hours UTC)
-3. **Daily posting cron job**
-   - Start command: `vrw post-daily`
-   - Schedule: `0 19 * * *` (1 time/day, 19:00 UTC)
+1. **Сервис бота** (долгоживущий worker)
+   - Команда запуска: `vrw bot`
+2. **Cron-джоба синхронизации**
+   - Команда запуска: `vrw sync-hourly`
+   - Расписание: `0 * * * *` (каждый час, UTC)
+3. **Cron-джоба ежедневной публикации**
+   - Команда запуска: `vrw post-daily`
+   - Расписание: `0 19 * * *` (1 раз в день, 19:00 UTC)
 
-Railway cron schedules are configured in the Railway UI per service/job.
+Cron-расписания Railway задаются в UI Railway для каждого сервиса/джобы.
 
-### 2) Attach PostgreSQL
+### 2) Подключите PostgreSQL
 
-1. Add a Railway PostgreSQL service.
-2. Reference its connection string in `DATABASE_URL` for each service.
-3. Run migrations before first production run:
+1. Добавьте сервис PostgreSQL в Railway.
+2. Передайте его connection string в `DATABASE_URL` для каждого сервиса.
+3. Перед первым прод-запуском примените миграции:
 
 ```bash
 alembic upgrade head
 ```
 
-### 3) Set environment variables
+### 3) Задайте переменные окружения
 
-Set these in Railway for all services unless noted:
+Задайте эти переменные в Railway для всех сервисов (если не указано иное):
 
 - `APP_ENV=production`
 - `APP_LOG_LEVEL=INFO`
 - `DATABASE_URL=<railway postgres url>`
 - `SOURCE_URL=https://vpn.maximkatz.com/`
 - `SOURCE_TIMEZONE=UTC`
-- `TELEGRAM_BOT_TOKEN=<required for bot and post-daily>`
-- `TELEGRAM_DEFAULT_CHAT_IDS=<optional comma-separated chat IDs>`
+- `TELEGRAM_BOT_TOKEN=<обязательно для bot и post-daily>`
+- `TELEGRAM_DEFAULT_CHAT_IDS=<необязательно, chat ID через запятую>`
 
-Optional scheduler metadata vars (informational defaults in app):
+Необязательные переменные с метаданными расписания (информационные дефолты в приложении):
 
-- `SCRAPE_TIMES_UTC=00:00,06:00,12:00,18:00`
+- `SCRAPE_TIMES_UTC=every hour (0 * * * *)`
 - `DAILY_POST_TIME_UTC=19:00`
 
-### 4) Playwright dependencies on Railway
+### 4) Зависимости Playwright в Railway
 
-The included Docker image installs Chromium and required system libraries with:
+Включённый Docker-образ устанавливает Chromium и нужные системные библиотеки командой:
 
 ```bash
 python -m playwright install --with-deps chromium
 ```
 
-No extra apt packages are needed in Railway when using this Dockerfile.
+При использовании этого Dockerfile дополнительные apt-пакеты в Railway не нужны.
 
-### 5) Runtime behavior and env-var failure boundaries
+### 5) Поведение на рантайме и границы обязательных env-переменных
 
-- `vrw bot` requires `TELEGRAM_BOT_TOKEN` and `DATABASE_URL`.
-- `vrw scrape-save` requires `DATABASE_URL` (and browser dependencies).
-- `vrw post-daily` requires `DATABASE_URL` and `TELEGRAM_BOT_TOKEN`.
-- `vrw scrape` can run without DB credentials.
+- `vrw bot` требует `TELEGRAM_BOT_TOKEN` и `DATABASE_URL`.
+- `vrw scrape-save` требует `DATABASE_URL` (и browser-зависимости).
+- `vrw post-daily` требует `DATABASE_URL` и `TELEGRAM_BOT_TOKEN`.
+- `vrw scrape` может запускаться без реквизитов БД.
 
-## Repairing historical wrong checked-at dates (production / Railway)
+## Исправление исторически неверных checked-at дат (production / Railway)
 
-Use this if chart points are shifted to the wrong day because older persisted rows had an incorrect `checked_at`.
+Используйте это, если точки на графике сдвинуты на неверный день из-за ошибочных `checked_at` в ранее сохранённых строках.
 
-1. Open a Railway shell for the service connected to production `DATABASE_URL`.
-2. (Recommended) run a dry-run first:
+1. Откройте Railway shell для сервиса, подключённого к production `DATABASE_URL`.
+2. (Рекомендуется) сначала dry-run:
 
 ```bash
 vrw repair-checked-at --source-name maximkatz --dry-run
 ```
 
-3. Run the actual repair:
+3. Запустите фактическое исправление:
 
 ```bash
 vrw repair-checked-at --source-name maximkatz
 ```
 
-4. Regenerate chart(s) from repaired DB data:
+4. Перегенерируйте график(и) на основе исправленных данных из БД:
 
 ```bash
 vrw generate-chart --source-name maximkatz --days 30
 ```
 
-Notes:
-- The repair updates existing `vpn_snapshot_result.checked_at` values in place; it does not insert snapshots or rows.
-- Parsed values are recomputed from each row's stored `checked_at_raw`, so historical bad days (for example stale March 30 points) are corrected after the repair and chart regeneration.
+Примечания:
+- Команда обновляет существующие значения `vpn_snapshot_result.checked_at` in-place; новые снапшоты/строки не вставляются.
+- Значения пересчитываются из сохранённого `checked_at_raw` каждой строки, поэтому исторические ошибки дат (например, «зависшие» точки за 30 марта) исправляются после запуска repair и повторной генерации графика.
 
-## Telegram bot commands
+## Команды Telegram-бота
 
-Set in `.env`:
+Задайте в `.env`:
 
 ```env
 TELEGRAM_BOT_TOKEN=123456:your_token
 ```
 
-Available bot commands:
-- `/start` and `/help`: short help text
-- `/today`: sends today's chart if available, otherwise latest chart overall
-- `/chart`: sends latest chart overall
-- `/last`: sends latest snapshot summary with source name, fetched time, and top 10 VPN scores
+Доступные команды бота:
+- `/start` и `/help`: краткая справка
+- `/today`: отправляет график за сегодня, если он есть, иначе последний доступный график
+- `/chart`: отправляет последний доступный график
+- `/last`: отправляет сводку по последнему снапшоту (имя источника, время получения и топ-10 оценок VPN)
 
-Notes:
-- Incoming command chats are upserted into `telegram_chat` (`chat_id`, `chat_type`, `title`, `is_active`, `last_posted_date`).
-- Bot command handling is polling-based (`vrw bot`).
-- If chart metadata exists but the PNG is missing on disk, the bot replies with a clear error message.
-- Use Railway cron jobs (documented above) to run `vrw sync-hourly` and `vrw post-daily`.
+Примечания:
+- Чаты с входящими командами upsert-ятся в `telegram_chat` (`chat_id`, `chat_type`, `title`, `is_active`, `last_posted_date`).
+- Обработка команд бота работает в polling-режиме (`vrw bot`).
+- Если метаданные графика есть, но PNG отсутствует на диске, бот возвращает понятное сообщение об ошибке.
+- Для запуска `vrw sync-hourly` и `vrw post-daily` используйте Railway cron jobs (см. раздел выше).
