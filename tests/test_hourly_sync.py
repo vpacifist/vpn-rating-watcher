@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -187,9 +188,13 @@ def test_hourly_sync_updated_sends_notifications_and_diff() -> None:
 
 
 def test_build_update_message_without_top_header_when_all_changes_fit() -> None:
+    chart_stub = SimpleNamespace(
+        chart_id=22,
+        end_date=datetime(2026, 3, 29, tzinfo=timezone.utc).date(),
+    )
     message = _build_update_message(
-        saved=type("Saved", (), {"snapshot_id": 11})(),
-        chart=type("Chart", (), {"chart_id": 22, "end_date": datetime(2026, 3, 29, tzinfo=timezone.utc).date()})(),
+        saved=SimpleNamespace(snapshot_id=11),
+        chart=chart_stub,
         diff=SnapshotDiffSummary(
             changed_count=1,
             new_count=1,
@@ -208,9 +213,13 @@ def test_build_update_message_without_top_header_when_all_changes_fit() -> None:
 
 
 def test_build_update_message_omits_changes_line_when_only_changed_and_all_fit() -> None:
+    chart_stub = SimpleNamespace(
+        chart_id=22,
+        end_date=datetime(2026, 3, 29, tzinfo=timezone.utc).date(),
+    )
     message = _build_update_message(
-        saved=type("Saved", (), {"snapshot_id": 11})(),
-        chart=type("Chart", (), {"chart_id": 22, "end_date": datetime(2026, 3, 29, tzinfo=timezone.utc).date()})(),
+        saved=SimpleNamespace(snapshot_id=11),
+        chart=chart_stub,
         diff=SnapshotDiffSummary(
             changed_count=1,
             new_count=0,
