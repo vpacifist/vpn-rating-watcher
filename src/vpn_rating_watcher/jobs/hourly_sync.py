@@ -114,6 +114,9 @@ def _diff_snapshots(
     for name in new_names[: max(0, 5 - len(top_changes))]:
         new_rank, new_score = new_scores[name]
         top_changes.append(f"new: #{new_rank} {name} ({new_score})")
+    for name in removed_names[: max(0, 5 - len(top_changes))]:
+        old_rank, old_score = old_scores[name]
+        top_changes.append(f"removed: #{old_rank} {name} ({old_score})")
 
     return SnapshotDiffSummary(
         changed_count=len(changed_names),
@@ -133,23 +136,30 @@ async def _send_text(*, token: str, chat_id: str, text: str) -> None:
 
 def _build_update_message(
     *,
-    source_name: str,
     saved: PersistSnapshotResult,
     chart: ChartGenerationResult,
     diff: SnapshotDiffSummary,
 ) -> str:
+    total_changes = diff.changed_count + diff.new_count + diff.removed_count
+    all_changes_fit_top = total_changes > 0 and len(diff.top_changes) == total_changes
+
     lines = [
         "✅ VPN Rating Watcher: база обновлена",
-        f"Source: {source_name}",
         f"Snapshot ID: {saved.snapshot_id}",
         f"Chart ID: {chart.chart_id} ({chart.end_date.isoformat()})",
-        (
-            "Изменения: "
-            f"changed={diff.changed_count}, new={diff.new_count}, removed={diff.removed_count}"
-        ),
     ]
+    if not (all_changes_fit_top and diff.new_count == 0 and diff.removed_count == 0):
+        if diff.new_count == 0 and diff.removed_count == 0:
+            lines.append(f"Изменения: changed={diff.changed_count}")
+        else:
+            lines.append(
+                "Изменения: "
+                f"changed={diff.changed_count}, new={diff.new_count}, removed={diff.removed_count}"
+            )
+
     if diff.top_changes:
-        lines.append("Top changes:")
+        if not all_changes_fit_top:
+            lines.append("Top changes:")
         lines.extend(f"- {line}" for line in diff.top_changes)
     return "\n".join(lines)
 
@@ -222,7 +232,6 @@ def run_hourly_sync_job(
         chart = chart_func(session=session, source_name=source_name)
 
         message_text = _build_update_message(
-            source_name=source_name,
             saved=saved,
             chart=chart,
             diff=diff,
