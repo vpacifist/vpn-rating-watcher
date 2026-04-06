@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from vpn_rating_watcher.charts.service import DailyScoreRow
+from vpn_rating_watcher.charts.service import DailyScoreRow, color_for_vpn
 
 
 def build_dates(start_date: date, end_date: date) -> list[date]:
@@ -22,6 +22,11 @@ def build_chart_payload(
     source_name: str,
     top_n: int | None,
 ) -> dict:
+    if rows:
+        first_data_date = min(row.point_date for row in rows)
+        if first_data_date > start_date:
+            start_date = first_data_date
+
     days = build_dates(start_date=start_date, end_date=end_date)
     labels = [day.isoformat() for day in days]
 
@@ -42,6 +47,7 @@ def build_chart_payload(
         {
             "name": vpn_name,
             "values": [points_by_vpn[vpn_name].get(day) for day in days],
+            "color": color_for_vpn(vpn_name),
         }
         for vpn_name in ordered_vpns
     ]

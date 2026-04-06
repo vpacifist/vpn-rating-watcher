@@ -362,9 +362,13 @@ def _compute_label_positions(
     return positioned
 
 
-def _color_for_vpn(vpn_name: str) -> str | None:
+def color_for_vpn(vpn_name: str) -> str | None:
     normalized_name = " ".join(vpn_name.split()).casefold()
     return VPN_LINE_COLORS.get(normalized_name)
+
+
+def _color_for_vpn(vpn_name: str) -> str | None:
+    return color_for_vpn(vpn_name)
 
 
 def _add_end_labels(
