@@ -175,10 +175,7 @@ def index() -> str:
         const option = {
           backgroundColor: 'transparent',
           tooltip: { trigger: 'axis' },
-          legend: {
-            type: 'scroll',
-            textStyle: { color: '#dce4ff' }
-          },
+          legend: { show: false },
           grid: { left: 12, right: 12, top: 48, bottom: 60, containLabel: true },
           xAxis: {
             type: 'category',
@@ -195,8 +192,20 @@ def index() -> str:
             name: item.name,
             type: 'line',
             smooth: true,
-            connectNulls: false,
+            connectNulls: true,
             showSymbol: false,
+            endLabel: {
+              show: true,
+              formatter: '{a}',
+              color: item.color || '#dce4ff'
+            },
+            labelLayout: {
+              moveOverlap: 'shiftY'
+            },
+            lineStyle: {
+              width: 2
+            },
+            color: item.color || undefined,
             data: item.values
           }))
         };
