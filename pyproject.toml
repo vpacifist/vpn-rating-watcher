@@ -23,6 +23,8 @@ dependencies = [
   "python-dateutil>=2.9.0,<3.0.0",
   "sqlalchemy>=2.0.36,<3.0.0",
   "typer>=0.12.5,<1.0.0",
+  "fastapi>=0.116.0,<1.0.0",
+  "uvicorn>=0.35.0,<1.0.0",
 ]
 
 [project.optional-dependencies]

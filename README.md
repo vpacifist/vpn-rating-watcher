@@ -175,27 +175,41 @@ Smoke-тест скрапера в CI детерминированный: исп
 
 ## Деплой в Railway
 
-В репозитории уже есть готовые `Dockerfile` и `railway.json` для Railway.
+В репозитории есть готовые `Dockerfile` и `railway.json` для Railway.  
+Для полной production-схемы с публичным интерактивным графиком используйте **4 сервиса** из одного репозитория.
 
 ### 1) Создайте сервисы/джобы
 
-Используйте один репозиторий и создайте три Railway-сервиса:
+1. **Сервис web-дашборда** (публичный HTTP-сервис)
+   - Команда запуска:
 
-1. **Сервис бота** (долгоживущий worker)
+   ```bash
+   uvicorn vpn_rating_watcher.web.app:app --host 0.0.0.0 --port $PORT
+   ```
+
+   - Включите Public Networking / Generate Domain.
+   - Этот сервис отдаёт:
+     - `GET /` — адаптивная HTML-страница с интерактивным графиком (ECharts),
+     - `GET /api/chart` — JSON-данные для графика,
+     - `GET /health` — healthcheck.
+
+2. **Сервис бота** (долгоживущий worker)
    - Команда запуска: `vrw bot`
-2. **Cron-джоба синхронизации**
+
+3. **Cron-джоба синхронизации**
    - Команда запуска: `vrw sync-hourly`
    - Расписание: `0 * * * *` (каждый час, UTC)
-3. **Cron-джоба ежедневной публикации**
+
+4. **Cron-джоба ежедневной публикации**
    - Команда запуска: `vrw post-daily`
    - Расписание: `0 19 * * *` (1 раз в день, 19:00 UTC)
 
-Cron-расписания Railway задаются в UI Railway для каждого сервиса/джобы.
+> Почему именно так: интерактивный web-график живёт в отдельном HTTP-сервисе и читает данные из PostgreSQL, а обновление данных по расписанию продолжает делать `sync-hourly`.
 
 ### 2) Подключите PostgreSQL
 
 1. Добавьте сервис PostgreSQL в Railway.
-2. Передайте его connection string в `DATABASE_URL` для каждого сервиса.
+2. Передайте его connection string в `DATABASE_URL` для всех 4 сервисов.
 3. Перед первым прод-запуском примените миграции:
 
 ```bash
@@ -204,37 +218,57 @@ alembic upgrade head
 
 ### 3) Задайте переменные окружения
 
-Задайте эти переменные в Railway для всех сервисов (если не указано иное):
+#### Для всех сервисов
 
 - `APP_ENV=production`
 - `APP_LOG_LEVEL=INFO`
 - `DATABASE_URL=<railway postgres url>`
 - `SOURCE_URL=https://vpn.maximkatz.com/`
 - `SOURCE_TIMEZONE=UTC`
-- `TELEGRAM_BOT_TOKEN=<обязательно для bot и post-daily>`
-- `TELEGRAM_DEFAULT_CHAT_IDS=<необязательно, chat ID через запятую>`
 
-Необязательные переменные с метаданными расписания (информационные дефолты в приложении):
+#### Для bot + post-daily
 
+- `TELEGRAM_BOT_TOKEN=<обязательно>`
+
+#### Необязательные
+
+- `TELEGRAM_DEFAULT_CHAT_IDS=<chat id через запятую>`
 - `SCRAPE_TIMES_UTC=every hour (0 * * * *)`
 - `DAILY_POST_TIME_UTC=19:00`
 
-### 4) Зависимости Playwright в Railway
+### 4) Настройте Public Domain для web
 
-Включённый Docker-образ устанавливает Chromium и нужные системные библиотеки командой:
+1. Откройте `vrw-web` в Railway.
+2. Включите `Networking` → `Public Networking`.
+3. Сгенерируйте домен (`*.up.railway.app`) или подключите кастомный.
+4. Проверьте:
+   - `/health` отвечает `{"status":"ok"}`
+   - `/` открывает интерактивный график
+
+### 5) Проверка работоспособности end-to-end
+
+1. Запустите `vrw sync-hourly` вручную (Run once), чтобы обновить данные.
+2. Откройте `/api/chart?days=30&top_n=10` — должен прийти JSON.
+3. Откройте `/` с телефона и десктопа — график должен быть адаптивным.
+4. Проверьте автообновление страницы (по умолчанию polling каждые 5 минут).
+
+### 6) Зависимости Playwright в Railway
+
+Docker-образ уже устанавливает Chromium и системные зависимости:
 
 ```bash
 python -m playwright install --with-deps chromium
 ```
 
-При использовании этого Dockerfile дополнительные apt-пакеты в Railway не нужны.
+При использовании текущего Dockerfile дополнительных apt-пакетов в Railway не требуется.
 
-### 5) Поведение на рантайме и границы обязательных env-переменных
+### 7) Границы обязательных env-переменных по командам
 
 - `vrw bot` требует `TELEGRAM_BOT_TOKEN` и `DATABASE_URL`.
 - `vrw scrape-save` требует `DATABASE_URL` (и browser-зависимости).
 - `vrw post-daily` требует `DATABASE_URL` и `TELEGRAM_BOT_TOKEN`.
-- `vrw scrape` может запускаться без реквизитов БД.
+- `vrw sync-hourly` требует `DATABASE_URL` и browser-зависимости.
+- web (`uvicorn vpn_rating_watcher.web.app:app ...`) требует `DATABASE_URL`.
 
 ## Исправление исторически неверных checked-at дат (production / Railway)
 
