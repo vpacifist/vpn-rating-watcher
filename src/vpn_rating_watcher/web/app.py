@@ -157,6 +157,7 @@ def index() -> str:
 
     async function loadChart() {
       try {
+        const isMobile = window.matchMedia('(max-width: 768px)').matches;
         const days = document.getElementById('days').value;
         const topN = document.getElementById('topN').value;
         const res = await fetch(`/api/chart-data?days=${days}&top_n=${topN}`);
@@ -176,11 +177,17 @@ def index() -> str:
           backgroundColor: 'transparent',
           tooltip: { trigger: 'axis' },
           legend: { show: false },
-          grid: { left: 12, right: 150, top: 48, bottom: 60, containLabel: true },
+          grid: {
+            left: 10,
+            right: isMobile ? 82 : 102,
+            top: 48,
+            bottom: isMobile ? 72 : 60,
+            containLabel: true
+          },
           xAxis: {
             type: 'category',
             data: payload.labels,
-            axisLabel: { color: '#c9d2ef', rotate: 40 }
+            axisLabel: { color: '#c9d2ef', rotate: isMobile ? 35 : 40 }
           },
           yAxis: {
             type: 'value',
@@ -198,7 +205,7 @@ def index() -> str:
               show: true,
               formatter: '{a}',
               color: item.color || '#dce4ff',
-              width: 140,
+              width: isMobile ? 108 : 124,
               overflow: 'break'
             },
             labelLayout: {
