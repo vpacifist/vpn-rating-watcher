@@ -176,7 +176,7 @@ def index() -> str:
           backgroundColor: 'transparent',
           tooltip: { trigger: 'axis' },
           legend: { show: false },
-          grid: { left: 12, right: 12, top: 48, bottom: 60, containLabel: true },
+          grid: { left: 12, right: 150, top: 48, bottom: 60, containLabel: true },
           xAxis: {
             type: 'category',
             data: payload.labels,
@@ -197,7 +197,9 @@ def index() -> str:
             endLabel: {
               show: true,
               formatter: '{a}',
-              color: item.color || '#dce4ff'
+              color: item.color || '#dce4ff',
+              width: 140,
+              overflow: 'break'
             },
             labelLayout: {
               moveOverlap: 'shiftY'
