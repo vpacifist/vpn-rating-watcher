@@ -20,8 +20,8 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/api/chart")
-def api_chart(
+@app.get("/api/chart-data")
+def api_chart_data(
     days: int | None = Query(default=30, ge=1, le=365),
     source_name: str = Query(default=MAIN_LIVE_SOURCE_NAME),
     top_n: int | None = Query(default=10, ge=1, le=50),
@@ -49,6 +49,18 @@ def api_chart(
         source_name=source_name,
         top_n=top_n,
     )
+
+
+
+
+@app.get("/api/chart")
+def api_chart_legacy(
+    days: int | None = Query(default=30, ge=1, le=365),
+    source_name: str = Query(default=MAIN_LIVE_SOURCE_NAME),
+    top_n: int | None = Query(default=10, ge=1, le=50),
+) -> dict:
+    """Backward-compatible alias for older clients."""
+    return api_chart_data(days=days, source_name=source_name, top_n=top_n)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -144,44 +156,61 @@ def index() -> str:
     const chart = echarts.init(document.getElementById('chart'));
 
     async function loadChart() {
-      const days = document.getElementById('days').value;
-      const topN = document.getElementById('topN').value;
-      const res = await fetch(`/api/chart?days=${days}&top_n=${topN}`);
-      const payload = await res.json();
-      const option = {
-        backgroundColor: 'transparent',
-        tooltip: { trigger: 'axis' },
-        legend: {
-          type: 'scroll',
-          textStyle: { color: '#dce4ff' }
-        },
-        grid: { left: 12, right: 12, top: 48, bottom: 60, containLabel: true },
-        xAxis: {
-          type: 'category',
-          data: payload.labels,
-          axisLabel: { color: '#c9d2ef', rotate: 40 }
-        },
-        yAxis: {
-          type: 'value',
-          min: 0,
-          max: 36,
-          axisLabel: { color: '#c9d2ef' }
-        },
-        series: payload.series.map((item) => ({
-          name: item.name,
-          type: 'line',
-          smooth: true,
-          connectNulls: false,
-          showSymbol: false,
-          data: item.values
-        }))
-      };
-      chart.setOption(option, true);
+      try {
+        const days = document.getElementById('days').value;
+        const topN = document.getElementById('topN').value;
+        const res = await fetch(`/api/chart-data?days=${days}&top_n=${topN}`);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
 
-      document.getElementById('meta').textContent =
-        `Источник: ${payload.source_name} · ` +
-        `Диапазон: ${payload.date_range.from}..${payload.date_range.to} · ` +
-        `Обновлено: ${payload.updated_at_utc}`;
+        const payload = await res.json();
+        if (!payload.series || payload.series.length === 0) {
+          chart.clear();
+          document.getElementById('meta').textContent =
+            "Данные пока отсутствуют. Проверьте, что sync-hourly уже запускался.";
+          return;
+        }
+
+        const option = {
+          backgroundColor: 'transparent',
+          tooltip: { trigger: 'axis' },
+          legend: {
+            type: 'scroll',
+            textStyle: { color: '#dce4ff' }
+          },
+          grid: { left: 12, right: 12, top: 48, bottom: 60, containLabel: true },
+          xAxis: {
+            type: 'category',
+            data: payload.labels,
+            axisLabel: { color: '#c9d2ef', rotate: 40 }
+          },
+          yAxis: {
+            type: 'value',
+            min: 0,
+            max: 36,
+            axisLabel: { color: '#c9d2ef' }
+          },
+          series: payload.series.map((item) => ({
+            name: item.name,
+            type: 'line',
+            smooth: true,
+            connectNulls: false,
+            showSymbol: false,
+            data: item.values
+          }))
+        };
+        chart.setOption(option, true);
+
+        document.getElementById('meta').textContent =
+          `Источник: ${payload.source_name} · ` +
+          `Диапазон: ${payload.date_range.from}..${payload.date_range.to} · ` +
+          `Обновлено: ${payload.updated_at_utc}`;
+      } catch (error) {
+        chart.clear();
+        document.getElementById('meta').textContent =
+          `Не удалось загрузить график: ${error}. Попробуйте позже.`;
+      }
     }
 
     document.getElementById('refreshBtn').addEventListener('click', loadChart);
@@ -190,7 +219,7 @@ def index() -> str:
     window.addEventListener('resize', () => chart.resize());
 
     loadChart();
-    setInterval(loadChart, 5 * 60 * 1000);
+    setInterval(loadChart, 60 * 60 * 1000);
   </script>
 </body>
 </html>
