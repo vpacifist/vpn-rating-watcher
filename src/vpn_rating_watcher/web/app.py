@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse
 
 from vpn_rating_watcher.charts.service import (
     MAIN_LIVE_SOURCE_NAME,
-    query_daily_latest_scores,
+    query_daily_aggregated_scores,
     resolve_date_range,
 )
 from vpn_rating_watcher.db.session import get_session_factory
@@ -35,7 +35,7 @@ def api_chart_data(
             to_date=None,
             source_name=source_name,
         )
-        rows = query_daily_latest_scores(
+        rows = query_daily_aggregated_scores(
             session=session,
             start_date=date_range.start_date,
             end_date=date_range.end_date,
