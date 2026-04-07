@@ -210,7 +210,12 @@ def query_daily_aggregated_scores(
         .join(Snapshot, Snapshot.id == VpnSnapshotResult.snapshot_id)
         .join(Vpn, Vpn.id == VpnSnapshotResult.vpn_id)
         .where(and_(effective_row_date >= start_date, effective_row_date <= end_date))
-        .order_by(Vpn.name.asc(), effective_row_date.asc(), desc(Snapshot.fetched_at), desc(Snapshot.id))
+        .order_by(
+            Vpn.name.asc(),
+            effective_row_date.asc(),
+            desc(Snapshot.fetched_at),
+            desc(Snapshot.id),
+        )
     )
 
     stmt = _apply_source_filter(stmt, source_name=source_name)
@@ -218,7 +223,9 @@ def query_daily_aggregated_scores(
     raw_rows = session.execute(stmt).all()
     grouped_scores: dict[str, dict[date, list[int]]] = {}
     for vpn_name, point_date, score in raw_rows:
-        resolved_date = point_date if isinstance(point_date, date) else date.fromisoformat(str(point_date))
+        resolved_date = (
+            point_date if isinstance(point_date, date) else date.fromisoformat(str(point_date))
+        )
         vpn_scores = grouped_scores.setdefault(vpn_name, {})
         vpn_scores.setdefault(resolved_date, []).append(score)
 
