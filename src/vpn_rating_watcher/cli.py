@@ -304,13 +304,20 @@ def repair_checked_at_command(
 def run_bot() -> None:
     """Run Telegram bot in polling mode."""
     _configure_logging()
-    token = get_settings().telegram_bot_token
+    settings = get_settings()
+    token = settings.telegram_bot_token
     if not token:
         typer.echo("Bot startup error: TELEGRAM_BOT_TOKEN is not set.")
         raise typer.Exit(code=2)
 
     session_factory = get_session_factory()
-    asyncio.run(run_polling(token=token, session_factory=session_factory))
+    asyncio.run(
+        run_polling(
+            token=token,
+            session_factory=session_factory,
+            web_app_url=settings.web_app_url,
+        )
+    )
 
 
 @app.command("post-daily")
