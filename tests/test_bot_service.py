@@ -14,7 +14,7 @@ from vpn_rating_watcher.bot.service import (
     get_today_or_latest_chart,
     upsert_telegram_chat,
 )
-from vpn_rating_watcher.charts.service import LINE_CHART_TYPE
+from vpn_rating_watcher.charts.service import CHART_MODE_MEDIAN_3D, LINE_CHART_TYPE
 from vpn_rating_watcher.db.base import Base
 from vpn_rating_watcher.db.models import (
     GeneratedChart,
@@ -343,3 +343,37 @@ def test_load_latest_chart_passes_generated_chart_metadata_for_regeneration(tmp_
     assert metadata.range_start_date == date(2026, 3, 20)
     assert metadata.range_end_date == date(2026, 3, 29)
     assert metadata.range_days == 10
+
+
+def test_load_latest_chart_median_mode_always_uses_regeneration(tmp_path: Path) -> None:
+    session_factory = _session_factory()
+    existing_file = tmp_path / "existing-daily.png"
+    existing_file.write_bytes(b"daily")
+    with session_factory() as session:
+        session.add(
+            GeneratedChart(
+                chart_date=date(2026, 3, 29),
+                chart_type=LINE_CHART_TYPE,
+                source_name="mixed",
+                range_start_date=date(2026, 3, 20),
+                range_end_date=date(2026, 3, 29),
+                range_days=10,
+                file_path=str(existing_file),
+            )
+        )
+        session.commit()
+
+    fake_output = tmp_path / "regenerated-median.png"
+    fake_output.write_bytes(b"png")
+    service = TelegramBotService(session_factory=session_factory)
+
+    with patch("vpn_rating_watcher.bot.service.regenerate_chart_to_temp_file") as regenerate:
+        regenerate.return_value = fake_output
+        chart, error = service.load_latest_chart(mode=CHART_MODE_MEDIAN_3D)
+
+    assert error is None
+    assert chart is not None
+    assert chart.file_path == fake_output
+    assert chart.is_temporary is True
+    assert regenerate.call_args is not None
+    assert regenerate.call_args.kwargs["mode"] == CHART_MODE_MEDIAN_3D

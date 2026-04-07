@@ -11,6 +11,7 @@ from aiogram.types import (
 from sqlalchemy.orm import Session, sessionmaker
 
 from vpn_rating_watcher.bot.service import TelegramBotService, cleanup_temporary_chart_file
+from vpn_rating_watcher.charts.service import CHART_MODE_MEDIAN_3D
 
 
 def _commands_text(*, web_app_url: str | None) -> str:
@@ -19,6 +20,7 @@ def _commands_text(*, web_app_url: str | None) -> str:
         "Available commands:\n"
         "/today - Send today's chart, or latest if today's is missing\n"
         "/chart - Send latest chart\n"
+        "/chart_median - Send latest chart (median 3d)\n"
         "/last - Show latest snapshot summary\n"
         f"{web_command}\n"
         "/help - Show this help"
@@ -113,6 +115,25 @@ def build_router(service: TelegramBotService, *, web_app_url: str | None = None)
         try:
             chart_date_label = chart.chart_date.isoformat() if chart.chart_date else "unknown"
             caption = f"Latest chart ({chart_date_label})"
+            await message.answer_photo(
+                photo=FSInputFile(chart.file_path),
+                caption=caption,
+                reply_markup=web_markup,
+            )
+        finally:
+            cleanup_temporary_chart_file(chart)
+
+    @local_router.message(Command("chart_median"))
+    async def chart_median_handler(message: Message) -> None:
+        await _remember_chat(message)
+        chart, error = service.load_latest_chart(mode=CHART_MODE_MEDIAN_3D)
+        if error:
+            await message.answer(error)
+            return
+        assert chart is not None
+        try:
+            chart_date_label = chart.chart_date.isoformat() if chart.chart_date else "unknown"
+            caption = f"Latest chart median 3d ({chart_date_label})"
             await message.answer_photo(
                 photo=FSInputFile(chart.file_path),
                 caption=caption,
