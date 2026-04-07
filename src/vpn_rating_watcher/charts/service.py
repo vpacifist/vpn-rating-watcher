@@ -21,6 +21,9 @@ CSV_BACKFILL_SOURCE_NAME = "csv_backfill"
 MIXED_SOURCE_NAME = "mixed"
 LINE_CHART_TYPE = "historical_line_chart"
 CARRY_FORWARD_MAX_DAYS = 3
+CHART_MODE_DAILY = "daily"
+CHART_MODE_MEDIAN_3D = "median_3d"
+CHART_MODES = (CHART_MODE_DAILY, CHART_MODE_MEDIAN_3D)
 
 VPN_LINE_COLORS: dict[str, str] = {
     "vpn red shield": "#ff5b27",
@@ -149,7 +152,7 @@ def resolve_date_range(
     return DateRange(start_date=from_date, end_date=to_date)
 
 
-def _aggregate_daily_scores(scores: list[int]) -> float:
+def _aggregate_daily_scores(scores: list[float]) -> float:
     if len(scores) == 1:
         return float(scores[0])
     if len(scores) == 2:
@@ -241,6 +244,49 @@ def query_daily_aggregated_scores(
         start_date=start_date,
         end_date=end_date,
     )
+
+
+def _apply_rolling_median_3d(rows: list[DailyScoreRow]) -> list[DailyScoreRow]:
+    rows_by_vpn: dict[str, list[DailyScoreRow]] = {}
+    for row in rows:
+        rows_by_vpn.setdefault(row.vpn_name, []).append(row)
+
+    smoothed_rows: list[DailyScoreRow] = []
+    for vpn_name, vpn_rows in rows_by_vpn.items():
+        ordered_rows = sorted(vpn_rows, key=lambda row: row.point_date)
+        for idx, row in enumerate(ordered_rows):
+            window = ordered_rows[max(0, idx - 2) : idx + 1]
+            window_scores = [window_row.score for window_row in window]
+            smoothed_rows.append(
+                DailyScoreRow(
+                    vpn_name=vpn_name,
+                    point_date=row.point_date,
+                    score=_aggregate_daily_scores(window_scores),
+                )
+            )
+    return sorted(smoothed_rows, key=lambda row: (row.vpn_name, row.point_date))
+
+
+def query_chart_scores(
+    session: Session,
+    *,
+    start_date: date,
+    end_date: date,
+    source_name: str,
+    mode: str = CHART_MODE_DAILY,
+) -> list[DailyScoreRow]:
+    if mode not in CHART_MODES:
+        raise ValueError(f"Unsupported chart mode: {mode}")
+
+    daily_rows = query_daily_aggregated_scores(
+        session=session,
+        start_date=start_date,
+        end_date=end_date,
+        source_name=source_name,
+    )
+    if mode == CHART_MODE_DAILY:
+        return daily_rows
+    return _apply_rolling_median_3d(daily_rows)
 
 
 def _build_dates(start_date: date, end_date: date) -> list[date]:
@@ -439,6 +485,7 @@ def generate_historical_line_chart(
     to_date: date | None = None,
     top_n: int | None = None,
     output: str | None = None,
+    mode: str = CHART_MODE_DAILY,
 ) -> ChartGenerationResult:
     date_range = resolve_date_range(
         session=session,
@@ -447,11 +494,12 @@ def generate_historical_line_chart(
         to_date=to_date,
         source_name=source_name,
     )
-    rows = query_daily_aggregated_scores(
+    rows = query_chart_scores(
         session=session,
         start_date=date_range.start_date,
         end_date=date_range.end_date,
         source_name=source_name,
+        mode=mode,
     )
     dates = _effective_chart_dates(
         rows,
@@ -520,6 +568,7 @@ def regenerate_chart_to_temp_file(
     session: Session,
     *,
     metadata: ChartRegenerationMetadata,
+    mode: str = CHART_MODE_DAILY,
 ) -> Path:
     if metadata.chart_type != LINE_CHART_TYPE:
         raise ValueError(f"Unsupported chart type for regeneration: {metadata.chart_type}")
@@ -548,11 +597,12 @@ def regenerate_chart_to_temp_file(
         output_path = tmp_file.name
 
     date_range = DateRange(start_date=start_date, end_date=end_date)
-    rows = query_daily_aggregated_scores(
+    rows = query_chart_scores(
         session=session,
         start_date=date_range.start_date,
         end_date=date_range.end_date,
         source_name=source_name,
+        mode=mode,
     )
     dates = _effective_chart_dates(
         rows,

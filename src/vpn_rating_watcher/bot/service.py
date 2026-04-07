@@ -9,6 +9,7 @@ from sqlalchemy import Select, desc, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from vpn_rating_watcher.charts.service import (
+    CHART_MODE_DAILY,
     LINE_CHART_TYPE,
     ChartRegenerationMetadata,
     regenerate_chart_to_temp_file,
@@ -339,13 +340,15 @@ class TelegramBotService:
                 title=title,
             )
 
-    def load_today_or_latest_chart(self) -> tuple[ChartLookupResult | None, str | None]:
+    def load_today_or_latest_chart(
+        self, *, mode: str = CHART_MODE_DAILY
+    ) -> tuple[ChartLookupResult | None, str | None]:
         with self._session_factory() as session:
             chart = get_today_or_latest_chart(session=session)
             if chart is None:
                 return None, "No charts found yet. Run `vrw generate-chart` first."
             original_path = chart.file_path
-            chart_path, error = _resolve_chart_path(session=session, chart=chart)
+            chart_path, error = _resolve_chart_path(session=session, chart=chart, mode=mode)
 
         if error:
             return None, error
@@ -355,13 +358,15 @@ class TelegramBotService:
         chart.is_temporary = chart_path != original_path
         return chart, None
 
-    def load_latest_chart(self) -> tuple[ChartLookupResult | None, str | None]:
+    def load_latest_chart(
+        self, *, mode: str = CHART_MODE_DAILY
+    ) -> tuple[ChartLookupResult | None, str | None]:
         with self._session_factory() as session:
             chart = get_latest_chart(session=session)
             if chart is None:
                 return None, "No charts found yet. Run `vrw generate-chart` first."
             original_path = chart.file_path
-            chart_path, error = _resolve_chart_path(session=session, chart=chart)
+            chart_path, error = _resolve_chart_path(session=session, chart=chart, mode=mode)
 
         if error:
             return None, error
@@ -382,9 +387,9 @@ class TelegramBotService:
 
 
 def _resolve_chart_path(
-    *, session: Session, chart: ChartLookupResult
+    *, session: Session, chart: ChartLookupResult, mode: str = CHART_MODE_DAILY
 ) -> tuple[Path | None, str | None]:
-    if chart.file_path.exists():
+    if mode == CHART_MODE_DAILY and chart.file_path.exists():
         return chart.file_path, None
 
     try:
@@ -399,6 +404,7 @@ def _resolve_chart_path(
                 chart_date=chart.chart_date,
                 file_path=chart.file_path,
             ),
+            mode=mode,
         )
     except ValueError as exc:
         return None, f"Failed to regenerate chart from DB data: {exc}"

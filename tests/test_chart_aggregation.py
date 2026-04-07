@@ -10,13 +10,16 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
 from vpn_rating_watcher.charts.service import (
+    CHART_MODE_MEDIAN_3D,
     ChartRegenerationMetadata,
     DailyScoreRow,
+    _apply_rolling_median_3d,
     _compute_label_positions,
     _effective_chart_dates,
     _matrix_from_rows,
     get_max_point_date,
     query_daily_aggregated_scores,
+    query_chart_scores,
     regenerate_chart_to_temp_file,
 )
 from vpn_rating_watcher.db.base import Base
@@ -111,6 +114,40 @@ def test_query_daily_aggregated_scores_uses_daily_average_for_two_values() -> No
 
         assert len(rows) == 1
         assert rows[0].score == 32.5
+
+
+def test_apply_rolling_median_3d_window_with_single_value() -> None:
+    rows = [
+        DailyScoreRow(vpn_name="VPN A", point_date=date(2026, 3, 1), score=30.0),
+    ]
+
+    smoothed = _apply_rolling_median_3d(rows)
+
+    assert len(smoothed) == 1
+    assert smoothed[0].score == 30.0
+
+
+def test_apply_rolling_median_3d_window_with_two_values_uses_average() -> None:
+    rows = [
+        DailyScoreRow(vpn_name="VPN A", point_date=date(2026, 3, 1), score=30.0),
+        DailyScoreRow(vpn_name="VPN A", point_date=date(2026, 3, 2), score=36.0),
+    ]
+
+    smoothed = _apply_rolling_median_3d(rows)
+
+    assert [row.score for row in smoothed] == [30.0, 33.0]
+
+
+def test_apply_rolling_median_3d_window_with_three_values_uses_median() -> None:
+    rows = [
+        DailyScoreRow(vpn_name="VPN A", point_date=date(2026, 3, 1), score=30.0),
+        DailyScoreRow(vpn_name="VPN A", point_date=date(2026, 3, 2), score=10.0),
+        DailyScoreRow(vpn_name="VPN A", point_date=date(2026, 3, 3), score=35.0),
+    ]
+
+    smoothed = _apply_rolling_median_3d(rows)
+
+    assert [row.score for row in smoothed] == [30.0, 20.0, 30.0]
 
 
 def test_query_daily_aggregated_scores_groups_by_checked_at_date() -> None:
@@ -515,6 +552,56 @@ def test_query_daily_aggregated_scores_does_not_carry_value_on_fourth_day() -> N
             date(2026, 3, 4),
         ]
         assert all(row.point_date != date(2026, 3, 5) for row in rows)
+
+
+def test_query_chart_scores_median_3d_uses_only_current_and_past_days() -> None:
+    with _session() as session:
+        vpn = Vpn(name="VPN A", normalized_name="vpn a")
+        session.add(vpn)
+        session.flush()
+
+        for day, score in (
+            (date(2026, 3, 1), 9),
+            (date(2026, 3, 2), 36),
+            (date(2026, 3, 3), 3),
+        ):
+            snapshot = Snapshot(
+                source_name="maximkatz",
+                source_url="https://vpn.maximkatz.com/",
+                fetched_at=datetime(day.year, day.month, day.day, 8, 0, tzinfo=timezone.utc),
+                content_hash=f"hash-{day.isoformat()}",
+                raw_payload_json={},
+            )
+            session.add(snapshot)
+            session.flush()
+            session.add(
+                VpnSnapshotResult(
+                    snapshot_id=snapshot.id,
+                    vpn_id=vpn.id,
+                    rank_position=1,
+                    checked_at=None,
+                    checked_at_raw=None,
+                    result_raw=f"{score}/36",
+                    score=score,
+                    score_max=36,
+                    score_pct=score / 36,
+                    price_raw=None,
+                    traffic_raw=None,
+                    devices_raw=None,
+                    details_url=None,
+                )
+            )
+        session.commit()
+
+        rows = query_chart_scores(
+            session=session,
+            start_date=date(2026, 3, 1),
+            end_date=date(2026, 3, 3),
+            source_name="maximkatz",
+            mode=CHART_MODE_MEDIAN_3D,
+        )
+
+        assert [row.score for row in rows] == [9.0, 22.5, 9.0]
 
 
 def test_query_daily_aggregated_scores_binds_date_params_for_postgresql() -> None:

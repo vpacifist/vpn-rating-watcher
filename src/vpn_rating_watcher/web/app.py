@@ -4,8 +4,10 @@ from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse
 
 from vpn_rating_watcher.charts.service import (
+    CHART_MODE_DAILY,
+    CHART_MODE_MEDIAN_3D,
     MAIN_LIVE_SOURCE_NAME,
-    query_daily_aggregated_scores,
+    query_chart_scores,
     resolve_date_range,
 )
 from vpn_rating_watcher.db.session import get_session_factory
@@ -25,6 +27,7 @@ def api_chart_data(
     days: int | None = Query(default=30, ge=1, le=365),
     source_name: str = Query(default=MAIN_LIVE_SOURCE_NAME),
     top_n: int | None = Query(default=10, ge=1, le=50),
+    mode: str = Query(default=CHART_MODE_DAILY, pattern="^(daily|median_3d)$"),
 ) -> dict:
     session_factory = get_session_factory()
     with session_factory() as session:
@@ -35,11 +38,12 @@ def api_chart_data(
             to_date=None,
             source_name=source_name,
         )
-        rows = query_daily_aggregated_scores(
+        rows = query_chart_scores(
             session=session,
             start_date=date_range.start_date,
             end_date=date_range.end_date,
             source_name=source_name,
+            mode=mode,
         )
 
     return build_chart_payload(
@@ -58,9 +62,10 @@ def api_chart_legacy(
     days: int | None = Query(default=30, ge=1, le=365),
     source_name: str = Query(default=MAIN_LIVE_SOURCE_NAME),
     top_n: int | None = Query(default=10, ge=1, le=50),
+    mode: str = Query(default=CHART_MODE_DAILY, pattern="^(daily|median_3d)$"),
 ) -> dict:
     """Backward-compatible alias for older clients."""
-    return api_chart_data(days=days, source_name=source_name, top_n=top_n)
+    return api_chart_data(days=days, source_name=source_name, top_n=top_n, mode=mode)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -147,6 +152,12 @@ def index() -> str:
           </select>
         </label>
         <button id='refreshBtn'>Обновить</button>
+        <label>Режим:
+          <select id='mode'>
+            <option value='daily' selected>Daily</option>
+            <option value='median_3d'>Median 3d</option>
+          </select>
+        </label>
       </div>
       <div id='chart'></div>
       <div class='meta' id='meta'>Загрузка...</div>
@@ -160,7 +171,8 @@ def index() -> str:
         const isMobile = window.matchMedia('(max-width: 768px)').matches;
         const days = document.getElementById('days').value;
         const topN = document.getElementById('topN').value;
-        const res = await fetch(`/api/chart-data?days=${days}&top_n=${topN}`);
+        const mode = document.getElementById('mode').value;
+        const res = await fetch(`/api/chart-data?days=${days}&top_n=${topN}&mode=${mode}`);
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`);
         }
@@ -235,6 +247,7 @@ def index() -> str:
 
         document.getElementById('meta').textContent =
           `Источник: ${payload.source_name} · ` +
+          `Режим: ${mode} · ` +
           `Диапазон: ${payload.date_range.from}..${payload.date_range.to} · ` +
           `Обновлено: ${payload.updated_at_utc}`;
       } catch (error) {
@@ -247,6 +260,7 @@ def index() -> str:
     document.getElementById('refreshBtn').addEventListener('click', loadChart);
     document.getElementById('days').addEventListener('change', loadChart);
     document.getElementById('topN').addEventListener('change', loadChart);
+    document.getElementById('mode').addEventListener('change', loadChart);
     window.addEventListener('resize', () => chart.resize());
 
     loadChart();
