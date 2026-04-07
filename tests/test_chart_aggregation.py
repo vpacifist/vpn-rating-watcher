@@ -18,8 +18,8 @@ from vpn_rating_watcher.charts.service import (
     _effective_chart_dates,
     _matrix_from_rows,
     get_max_point_date,
-    query_daily_aggregated_scores,
     query_chart_scores,
+    query_daily_aggregated_scores,
     regenerate_chart_to_temp_file,
 )
 from vpn_rating_watcher.db.base import Base

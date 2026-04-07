@@ -5,7 +5,6 @@ from fastapi.responses import HTMLResponse
 
 from vpn_rating_watcher.charts.service import (
     CHART_MODE_DAILY,
-    CHART_MODE_MEDIAN_3D,
     MAIN_LIVE_SOURCE_NAME,
     query_chart_scores,
     resolve_date_range,
