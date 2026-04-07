@@ -300,7 +300,9 @@ def test_hourly_sync_marks_chat_inactive_when_blocked() -> None:
         token="token",
         default_chat_ids_raw=None,
         scrape_func=_fake_scrape,
-        chart_func=lambda **kwargs: _realistic_chart_result(kwargs["session"], Path("chart-blocked.png")),
+        chart_func=lambda **kwargs: _realistic_chart_result(
+            kwargs["session"], Path("chart-blocked.png")
+        ),
         send_message_func=_fake_send,
     )
 
