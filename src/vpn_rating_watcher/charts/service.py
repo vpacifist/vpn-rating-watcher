@@ -340,12 +340,13 @@ def _render_line_chart(
         }
         if line_color:
             plot_kwargs["color"] = line_color
-        (line,) = ax.plot(observed_x, observed_y, **plot_kwargs)
+        smooth_x, smooth_y = _smooth_curve_points(observed_x, observed_y)
+        (line,) = ax.plot(smooth_x, smooth_y, **plot_kwargs)
         endpoints.append(
             (
                 vpn_name,
-                float(observed_x[-1]),
-                float(observed_y[-1]),
+                float(smooth_x[-1]),
+                float(smooth_y[-1]),
                 line.get_color(),
             )
         )
@@ -373,6 +374,49 @@ def _render_line_chart(
     fig.tight_layout()
     fig.savefig(output_path, facecolor=fig.get_facecolor(), bbox_inches="tight")
     plt.close(fig)
+
+
+def _smooth_curve_points(
+    x_values: np.ndarray, y_values: np.ndarray, *, steps_per_segment: int = 14
+) -> tuple[np.ndarray, np.ndarray]:
+    if x_values.size < 3:
+        return x_values, y_values
+
+    px = x_values.astype(float)
+    py = y_values.astype(float)
+    xs: list[np.ndarray] = []
+    ys: list[np.ndarray] = []
+
+    for idx in range(px.size - 1):
+        p0x = px[max(idx - 1, 0)]
+        p0y = py[max(idx - 1, 0)]
+        p1x = px[idx]
+        p1y = py[idx]
+        p2x = px[idx + 1]
+        p2y = py[idx + 1]
+        p3x = px[min(idx + 2, px.size - 1)]
+        p3y = py[min(idx + 2, py.size - 1)]
+
+        segment_t = np.linspace(0.0, 1.0, steps_per_segment, endpoint=False)
+        segment_x = _catmull_rom_segment(p0x, p1x, p2x, p3x, segment_t)
+        segment_y = _catmull_rom_segment(p0y, p1y, p2y, p3y, segment_t)
+        xs.append(segment_x)
+        ys.append(segment_y)
+
+    xs.append(np.array([px[-1]]))
+    ys.append(np.array([py[-1]]))
+    return np.concatenate(xs), np.concatenate(ys)
+
+
+def _catmull_rom_segment(
+    p0: float, p1: float, p2: float, p3: float, t_values: np.ndarray
+) -> np.ndarray:
+    return 0.5 * (
+        (2.0 * p1)
+        + (-p0 + p2) * t_values
+        + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * np.square(t_values)
+        + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * np.power(t_values, 3)
+    )
 
 
 def _compute_label_positions(
