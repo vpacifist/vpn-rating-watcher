@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -230,3 +231,41 @@ def test_build_update_message_omits_changes_line_when_only_changed_and_all_fit()
 
     assert "Изменения:" not in message
     assert "Top changes:" not in message
+
+
+def test_hourly_sync_notifies_when_called_inside_running_event_loop() -> None:
+    session_factory = _session_factory()
+
+    def _fake_scrape(**_: object) -> ScrapeResult:
+        return _make_scrape_result(table_hash="hash-loop", score_a=35, score_b=21)
+
+    sent: list[str] = []
+
+    async def _fake_send(**kwargs: str) -> None:
+        sent.append(kwargs["chat_id"])
+
+    with session_factory() as session:
+        session.add(TelegramChat(chat_id="1001", chat_type="private", title=None, is_active=True))
+        session.commit()
+
+    async def _run_job() -> None:
+        result = run_hourly_sync_job(
+            session_factory=session_factory,
+            source_name="maximkatz",
+            source_url="https://vpn.maximkatz.com/",
+            artifacts_dir="artifacts",
+            headless=True,
+            token="token",
+            default_chat_ids_raw=None,
+            scrape_func=_fake_scrape,
+            chart_func=lambda **kwargs: _realistic_chart_result(
+                kwargs["session"], Path("chart-loop.png")
+            ),
+            send_message_func=_fake_send,
+        )
+        assert result.status == "updated"
+        assert result.notified_count == 1
+
+    asyncio.run(_run_job())
+
+    assert sent == ["1001"]
