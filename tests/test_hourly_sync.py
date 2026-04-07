@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
+from aiogram.exceptions import TelegramForbiddenError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -269,3 +270,49 @@ def test_hourly_sync_notifies_when_called_inside_running_event_loop() -> None:
     asyncio.run(_run_job())
 
     assert sent == ["1001"]
+
+
+def test_hourly_sync_marks_chat_inactive_when_blocked() -> None:
+    session_factory = _session_factory()
+
+    def _fake_scrape(**_: object) -> ScrapeResult:
+        return _make_scrape_result(table_hash="hash-blocked", score_a=35, score_b=21)
+
+    async def _fake_send(**kwargs: str) -> None:
+        if kwargs["chat_id"] == "1001":
+            raise TelegramForbiddenError(method="sendMessage", message="blocked")
+
+    with session_factory() as session:
+        session.add_all(
+            [
+                TelegramChat(chat_id="1001", chat_type="private", title=None, is_active=True),
+                TelegramChat(chat_id="1002", chat_type="private", title=None, is_active=True),
+            ]
+        )
+        session.commit()
+
+    result = run_hourly_sync_job(
+        session_factory=session_factory,
+        source_name="maximkatz",
+        source_url="https://vpn.maximkatz.com/",
+        artifacts_dir="artifacts",
+        headless=True,
+        token="token",
+        default_chat_ids_raw=None,
+        scrape_func=_fake_scrape,
+        chart_func=lambda **kwargs: _realistic_chart_result(kwargs["session"], Path("chart-blocked.png")),
+        send_message_func=_fake_send,
+    )
+
+    assert result.status == "updated"
+    assert result.notified_count == 1
+    assert result.active_chat_count == 2
+
+    with session_factory() as session:
+        chats = session.query(TelegramChat).order_by(TelegramChat.chat_id.asc()).all()
+
+    assert len(chats) == 2
+    assert chats[0].chat_id == "1001"
+    assert chats[0].is_active is False
+    assert chats[1].chat_id == "1002"
+    assert chats[1].is_active is True
