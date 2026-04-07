@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramForbiddenError
 from sqlalchemy import Select, desc, select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -136,12 +137,6 @@ async def _send_text(*, token: str, chat_id: str, text: str) -> None:
 
 
 def _run_awaitable_sync(awaitable_factory: Callable[[], Awaitable[None]]) -> None:
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        asyncio.run(awaitable_factory())
-        return
-
     runner_error: BaseException | None = None
 
     def _runner() -> None:
@@ -264,10 +259,23 @@ def run_hourly_sync_job(
         if token:
             for chat in active_chats:
                 chat_id = chat.chat_id
-                _run_awaitable_sync(
-                    lambda chat_id=chat_id: sender(token=token, chat_id=chat_id, text=message_text)
-                )
-                notified_count += 1
+                try:
+                    _run_awaitable_sync(
+                        lambda chat_id=chat_id: sender(
+                            token=token,
+                            chat_id=chat_id,
+                            text=message_text,
+                        )
+                    )
+                except TelegramForbiddenError:
+                    chat.is_active = False
+                    session.commit()
+                    logger.warning(
+                        "hourly_sync.chat_forbidden_marked_inactive",
+                        extra={"chat_id": chat_id},
+                    )
+                else:
+                    notified_count += 1
         else:
             logger.warning("hourly_sync.token_missing_skip_notify")
 
