@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
@@ -134,6 +135,29 @@ async def _send_text(*, token: str, chat_id: str, text: str) -> None:
         await bot.session.close()
 
 
+def _run_awaitable_sync(awaitable_factory: Callable[[], Awaitable[None]]) -> None:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(awaitable_factory())
+        return
+
+    runner_error: BaseException | None = None
+
+    def _runner() -> None:
+        nonlocal runner_error
+        try:
+            asyncio.run(awaitable_factory())
+        except BaseException as exc:  # pragma: no cover - re-raised in caller thread
+            runner_error = exc
+
+    thread = threading.Thread(target=_runner)
+    thread.start()
+    thread.join()
+    if runner_error is not None:
+        raise runner_error
+
+
 def _build_update_message(
     *,
     saved: PersistSnapshotResult,
@@ -239,7 +263,10 @@ def run_hourly_sync_job(
 
         if token:
             for chat in active_chats:
-                asyncio.run(sender(token=token, chat_id=chat.chat_id, text=message_text))
+                chat_id = chat.chat_id
+                _run_awaitable_sync(
+                    lambda chat_id=chat_id: sender(token=token, chat_id=chat_id, text=message_text)
+                )
                 notified_count += 1
         else:
             logger.warning("hourly_sync.token_missing_skip_notify")
