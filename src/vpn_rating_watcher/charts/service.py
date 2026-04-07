@@ -379,10 +379,11 @@ def _render_line_chart(
         if observed_x.size == 0:
             continue
         line_color = _color_for_vpn(vpn_name)
-        plot_kwargs: dict[str, str | float] = {
-            "marker": "o",
-            "linewidth": 1.8,
-            "markersize": 3,
+        plot_kwargs: dict[str, str | float | bool] = {
+            "linewidth": 2.2,
+            "solid_capstyle": "round",
+            "solid_joinstyle": "round",
+            "antialiased": True,
         }
         if line_color:
             plot_kwargs["color"] = line_color
