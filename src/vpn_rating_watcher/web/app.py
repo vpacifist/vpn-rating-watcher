@@ -164,6 +164,46 @@ def index() -> str:
   </div>
   <script>
     const chart = echarts.init(document.getElementById('chart'));
+    const OVERLAP_SPREAD_STEP = 0.24;
+
+    function spreadOverlappingSeries(series) {
+      if (!Array.isArray(series) || series.length < 2) {
+        return series;
+      }
+
+      const maxLen = Math.max(...series.map((item) => item.values.length));
+      const offsetMaps = Array.from({ length: series.length }, () => new Map());
+
+      for (let index = 0; index < maxLen; index += 1) {
+        const sameValueGroups = new Map();
+        series.forEach((item, seriesIndex) => {
+          const value = item.values[index];
+          if (value == null) return;
+          const bucket = sameValueGroups.get(value) || [];
+          bucket.push({ seriesIndex, name: item.name });
+          sameValueGroups.set(value, bucket);
+        });
+
+        sameValueGroups.forEach((members) => {
+          if (members.length < 2) return;
+          members.sort((a, b) => a.name.localeCompare(b.name));
+          const center = (members.length - 1) / 2;
+          members.forEach((member, order) => {
+            const offset = (order - center) * OVERLAP_SPREAD_STEP;
+            offsetMaps[member.seriesIndex].set(index, offset);
+          });
+        });
+      }
+
+      return series.map((item, seriesIndex) => ({
+        ...item,
+        plotValues: item.values.map((value, index) => {
+          if (value == null) return null;
+          const adjusted = value + (offsetMaps[seriesIndex].get(index) || 0);
+          return Math.max(0, Math.min(36, adjusted));
+        })
+      }));
+    }
 
     async function loadChart() {
       try {
@@ -183,6 +223,7 @@ def index() -> str:
             "Данные пока отсутствуют. Проверьте, что sync-hourly уже запускался.";
           return;
         }
+        const spreadSeries = spreadOverlappingSeries(payload.series);
 
         const option = {
           backgroundColor: 'transparent',
@@ -212,12 +253,13 @@ def index() -> str:
               }
             }
           },
-          series: payload.series.map((item) => ({
+          series: spreadSeries.map((item, index) => ({
             name: item.name,
             type: 'line',
             smooth: true,
             connectNulls: true,
             showSymbol: false,
+            z: 10 + index,
             endLabel: {
               show: true,
               formatter: '{a}',
@@ -239,7 +281,7 @@ def index() -> str:
               shadowBlur: 3
             },
             color: item.color || undefined,
-            data: item.values
+            data: item.plotValues
           }))
         };
         chart.setOption(option, true);

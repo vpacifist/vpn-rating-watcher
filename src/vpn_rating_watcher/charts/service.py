@@ -24,6 +24,7 @@ CARRY_FORWARD_MAX_DAYS = 3
 CHART_MODE_DAILY = "daily"
 CHART_MODE_MEDIAN_3D = "median_3d"
 CHART_MODES = (CHART_MODE_DAILY, CHART_MODE_MEDIAN_3D)
+OVERLAP_SPREAD_STEP = 0.24
 
 VPN_LINE_COLORS: dict[str, str] = {
     "vpn red shield": "#ff5b27",
@@ -370,9 +371,16 @@ def _render_line_chart(
     )
 
     x_values = np.arange(len(dates))
+    plot_matrix = _spread_overlapping_points(
+        matrix=matrix,
+        vpn_names=vpn_names,
+        spread_step=OVERLAP_SPREAD_STEP,
+        min_value=0.0,
+        max_value=36.0,
+    )
     endpoints: list[tuple[str, float, float, str]] = []
     for idx, vpn_name in enumerate(vpn_names):
-        series = matrix[idx]
+        series = plot_matrix[idx]
         present = ~np.isnan(series)
         observed_x = x_values[present]
         observed_y = series[present]
@@ -421,6 +429,40 @@ def _render_line_chart(
     fig.tight_layout()
     fig.savefig(output_path, facecolor=fig.get_facecolor(), bbox_inches="tight")
     plt.close(fig)
+
+
+def _spread_overlapping_points(
+    *,
+    matrix: np.ndarray,
+    vpn_names: list[str],
+    spread_step: float,
+    min_value: float,
+    max_value: float,
+) -> np.ndarray:
+    if matrix.shape[0] < 2:
+        return matrix.copy()
+
+    adjusted = matrix.copy()
+
+    for column in range(adjusted.shape[1]):
+        grouped: dict[float, list[int]] = {}
+        for row in range(adjusted.shape[0]):
+            value = adjusted[row, column]
+            if np.isnan(value):
+                continue
+            grouped.setdefault(float(value), []).append(row)
+
+        for value, row_indices in grouped.items():
+            if len(row_indices) < 2:
+                continue
+            row_indices.sort(key=lambda idx: (vpn_names[idx], idx))
+            center = (len(row_indices) - 1) / 2
+            for order, row_idx in enumerate(row_indices):
+                offset = (order - center) * spread_step
+                spread_value = np.clip(value + offset, min_value, max_value)
+                adjusted[row_idx, column] = spread_value
+
+    return adjusted
 
 
 def _smooth_curve_points(
