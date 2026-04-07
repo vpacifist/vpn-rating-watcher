@@ -20,6 +20,7 @@ MAIN_LIVE_SOURCE_NAME = "maximkatz"
 CSV_BACKFILL_SOURCE_NAME = "csv_backfill"
 MIXED_SOURCE_NAME = "mixed"
 LINE_CHART_TYPE = "historical_line_chart"
+CARRY_FORWARD_MAX_DAYS = 3
 
 VPN_LINE_COLORS: dict[str, str] = {
     "vpn red shield": "#ff5b27",
@@ -38,7 +39,7 @@ VPN_LINE_COLORS: dict[str, str] = {
 class DailyScoreRow:
     vpn_name: str
     point_date: date
-    score: int
+    score: float
 
 
 @dataclass(slots=True)
@@ -148,7 +149,50 @@ def resolve_date_range(
     return DateRange(start_date=from_date, end_date=to_date)
 
 
-def query_daily_latest_scores(
+def _aggregate_daily_scores(scores: list[int]) -> float:
+    if len(scores) == 1:
+        return float(scores[0])
+    if len(scores) == 2:
+        return (scores[0] + scores[1]) / 2
+    return float(np.median(np.asarray(scores, dtype=float)))
+
+
+def _fill_missing_daily_scores(
+    *,
+    aggregated_by_vpn_day: dict[str, dict[date, float]],
+    start_date: date,
+    end_date: date,
+) -> list[DailyScoreRow]:
+    days = _build_dates(start_date=start_date, end_date=end_date)
+    filled_rows: list[DailyScoreRow] = []
+
+    for vpn_name, vpn_scores in sorted(aggregated_by_vpn_day.items()):
+        previous_score: float | None = None
+        previous_score_date: date | None = None
+        for day in days:
+            day_score = vpn_scores.get(day)
+            if day_score is not None:
+                previous_score = day_score
+                previous_score_date = day
+            if previous_score is None or previous_score_date is None:
+                continue
+
+            gap_days = (day - previous_score_date).days
+            if gap_days > CARRY_FORWARD_MAX_DAYS:
+                continue
+
+            filled_rows.append(
+                DailyScoreRow(
+                    vpn_name=vpn_name,
+                    point_date=day,
+                    score=previous_score,
+                )
+            )
+
+    return filled_rows
+
+
+def query_daily_aggregated_scores(
     session: Session,
     *,
     start_date: date,
@@ -156,49 +200,47 @@ def query_daily_latest_scores(
     source_name: str,
 ) -> list[DailyScoreRow]:
     effective_row_date = _effective_row_date()
-    ranked = (
+    stmt = (
         select(
             Vpn.name.label("vpn_name"),
             effective_row_date.label("point_date"),
             VpnSnapshotResult.score.label("score"),
-            func.row_number()
-            .over(
-                partition_by=(VpnSnapshotResult.vpn_id, effective_row_date),
-                order_by=(desc(Snapshot.fetched_at), desc(Snapshot.id), desc(VpnSnapshotResult.id)),
-            )
-            .label("row_num"),
         )
         .select_from(VpnSnapshotResult)
         .join(Snapshot, Snapshot.id == VpnSnapshotResult.snapshot_id)
         .join(Vpn, Vpn.id == VpnSnapshotResult.vpn_id)
         .where(and_(effective_row_date >= start_date, effective_row_date <= end_date))
+        .order_by(
+            Vpn.name.asc(),
+            effective_row_date.asc(),
+            desc(Snapshot.fetched_at),
+            desc(Snapshot.id),
+        )
     )
 
-    ranked = _apply_source_filter(ranked, source_name=source_name)
+    stmt = _apply_source_filter(stmt, source_name=source_name)
 
-    ranked_subq = ranked.subquery()
-    stmt: Select[tuple[str, str, int]] = (
-        select(
-            ranked_subq.c.vpn_name,
-            ranked_subq.c.point_date,
-            ranked_subq.c.score,
+    raw_rows = session.execute(stmt).all()
+    grouped_scores: dict[str, dict[date, list[int]]] = {}
+    for vpn_name, point_date, score in raw_rows:
+        resolved_date = (
+            point_date if isinstance(point_date, date) else date.fromisoformat(str(point_date))
         )
-        .where(ranked_subq.c.row_num == 1)
-        .order_by(ranked_subq.c.vpn_name.asc(), ranked_subq.c.point_date.asc())
+        vpn_scores = grouped_scores.setdefault(vpn_name, {})
+        vpn_scores.setdefault(resolved_date, []).append(score)
+
+    aggregated_by_vpn_day: dict[str, dict[date, float]] = {}
+    for vpn_name, score_by_date in grouped_scores.items():
+        aggregated_by_vpn_day[vpn_name] = {
+            day: _aggregate_daily_scores(scores)
+            for day, scores in score_by_date.items()
+        }
+
+    return _fill_missing_daily_scores(
+        aggregated_by_vpn_day=aggregated_by_vpn_day,
+        start_date=start_date,
+        end_date=end_date,
     )
-
-    return [
-        DailyScoreRow(
-            vpn_name=vpn_name,
-            point_date=(
-                point_date
-                if isinstance(point_date, date)
-                else date.fromisoformat(str(point_date))
-            ),
-            score=score,
-        )
-        for vpn_name, point_date, score in session.execute(stmt).all()
-    ]
 
 
 def _build_dates(start_date: date, end_date: date) -> list[date]:
@@ -229,7 +271,7 @@ def _matrix_from_rows(
         raise ValueError("--top-n must be greater than zero")
 
     date_to_idx = {day: idx for idx, day in enumerate(dates)}
-    latest_score: dict[str, int] = {}
+    latest_score: dict[str, float] = {}
     for row in rows:
         latest_score[row.vpn_name] = row.score
 
@@ -405,7 +447,7 @@ def generate_historical_line_chart(
         to_date=to_date,
         source_name=source_name,
     )
-    rows = query_daily_latest_scores(
+    rows = query_daily_aggregated_scores(
         session=session,
         start_date=date_range.start_date,
         end_date=date_range.end_date,
@@ -506,7 +548,7 @@ def regenerate_chart_to_temp_file(
         output_path = tmp_file.name
 
     date_range = DateRange(start_date=start_date, end_date=end_date)
-    rows = query_daily_latest_scores(
+    rows = query_daily_aggregated_scores(
         session=session,
         start_date=date_range.start_date,
         end_date=date_range.end_date,
