@@ -17,6 +17,7 @@ from vpn_rating_watcher.charts.service import (
     _compute_label_positions,
     _effective_chart_dates,
     _matrix_from_rows,
+    _spread_overlapping_points,
     get_max_point_date,
     query_chart_scores,
     query_daily_aggregated_scores,
@@ -148,6 +149,32 @@ def test_apply_rolling_median_3d_window_with_three_values_uses_median() -> None:
     smoothed = _apply_rolling_median_3d(rows)
 
     assert [row.score for row in smoothed] == [30.0, 20.0, 30.0]
+
+
+def test_spread_overlapping_points_separates_same_values_deterministically() -> None:
+    matrix = np.array(
+        [
+            [30.0, 31.0],
+            [30.0, 30.0],
+            [30.0, np.nan],
+        ]
+    )
+
+    adjusted = _spread_overlapping_points(
+        matrix=matrix,
+        vpn_names=["z-vpn", "a-vpn", "m-vpn"],
+        spread_step=0.24,
+        min_value=0.0,
+        max_value=36.0,
+    )
+
+    # Column 0 has 3 overlapping values -> sorted by name: a-vpn, m-vpn, z-vpn
+    assert adjusted[1, 0] == 29.76
+    assert adjusted[2, 0] == 30.0
+    assert adjusted[0, 0] == 30.24
+    # Column 1 has no overlap
+    assert adjusted[0, 1] == 31.0
+    assert adjusted[1, 1] == 30.0
 
 
 def test_query_daily_aggregated_scores_groups_by_checked_at_date() -> None:
