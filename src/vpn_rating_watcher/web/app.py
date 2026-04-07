@@ -193,7 +193,13 @@ def index() -> str:
             type: 'value',
             min: 0,
             max: 36,
-            axisLabel: { color: '#c9d2ef' }
+            axisLabel: { color: '#c9d2ef' },
+            splitLine: {
+              lineStyle: {
+                color: 'rgba(201, 210, 239, 0.28)',
+                width: 1
+              }
+            }
           },
           series: payload.series.map((item) => ({
             name: item.name,
@@ -205,6 +211,11 @@ def index() -> str:
               show: true,
               formatter: '{a}',
               color: item.color || '#dce4ff',
+              textBorderColor: 'rgba(11, 14, 25, 0.95)',
+              textBorderWidth: 2,
+              backgroundColor: 'rgba(11, 14, 25, 0.78)',
+              borderRadius: 4,
+              padding: [2, 6],
               width: isMobile ? 108 : 124,
               overflow: 'break'
             },
@@ -212,7 +223,9 @@ def index() -> str:
               moveOverlap: 'shiftY'
             },
             lineStyle: {
-              width: 2
+              width: 3,
+              shadowColor: 'rgba(11, 14, 25, 0.4)',
+              shadowBlur: 3
             },
             color: item.color || undefined,
             data: item.values
