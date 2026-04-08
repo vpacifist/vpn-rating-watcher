@@ -246,7 +246,10 @@ def index() -> str:
 
     function sourceHtml(sourceName) {
       if (sourceName === 'maximkatz') {
-        return `Источник: <a href='https://vpn.maximkatz.com/' target='_blank' rel='noopener noreferrer'>maximkatz</a>`;
+        return (
+          "Источник: <a href='https://vpn.maximkatz.com/' " +
+          "target='_blank' rel='noopener noreferrer'>maximkatz</a>"
+        );
       }
       return `Источник: ${sourceName}`;
     }
@@ -293,7 +296,8 @@ def index() -> str:
     async function loadChart() {
       try {
         const isMobile = window.matchMedia('(max-width: 768px)').matches;
-        const res = await fetch(`/api/chart-data?days=${state.days}&top_n=${state.topN}&mode=${state.mode}`);
+        const query = `/api/chart-data?days=${state.days}&top_n=${state.topN}&mode=${state.mode}`;
+        const res = await fetch(query);
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`);
         }
@@ -371,7 +375,8 @@ def index() -> str:
         document.getElementById('meta').innerHTML =
           `${sourceHtml(payload.source_name)} · ` +
           `Режим: ${state.mode === 'median_3d' ? 'median 3d' : 'daily'} · ` +
-          `Диапазон: ${formatRuDate(payload.date_range.from)} – ${formatRuDate(payload.date_range.to)} · ` +
+          `Диапазон: ${formatRuDate(payload.date_range.from)} ` +
+          `– ${formatRuDate(payload.date_range.to)} · ` +
           `Обновлено: ${formatRuDateTime(payload.updated_at_utc)}`;
       } catch (error) {
         chart.clear();
