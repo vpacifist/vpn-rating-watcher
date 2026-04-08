@@ -197,12 +197,6 @@ def build_router(service: TelegramBotService, *, web_app_url: str | None = None)
 
     @local_router.message(Command("status"))
     async def status_handler(message: Message) -> None:
-        service.upsert_chat(
-            chat_id=str(message.chat.id),
-            chat_type=message.chat.type,
-            title=_chat_title(message),
-            is_active=message.chat.type == "private",
-        )
         is_subscribed = service.is_chat_subscribed(chat_id=str(message.chat.id))
         status_text = "подписан" if is_subscribed else "не подписан"
         await message.answer(f"Статус текущего чата: {status_text}.")
