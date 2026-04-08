@@ -242,7 +242,7 @@ def index() -> str:
         hour12: false,
         timeZone: 'UTC'
       }).format(date);
-      return `${datePart} ${timePart}`;
+      return `${datePart} ${timePart} UTC`;
     }
 
     function sourceHtml(sourceName) {
