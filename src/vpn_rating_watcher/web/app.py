@@ -555,7 +555,8 @@ def index() -> str:
           const formattedValue = rawValue == null ? '—' : String(Math.round(rawValue));
           return (
             `<tr><td style="border:0; padding:6px 8px;">${item.marker}${item.seriesName}</td>` +
-            `<td style="border:0; padding:6px 8px; text-align:right;"><strong>${formattedValue}</strong></td></tr>`
+            `<td style="border:0; padding:6px 8px; text-align:right;">` +
+            `<strong>${formattedValue}</strong></td></tr>`
           );
         }).join('');
         return (
