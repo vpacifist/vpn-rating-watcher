@@ -48,6 +48,7 @@ def _active_chats_query() -> Select[tuple[TelegramChat]]:
     return (
         select(TelegramChat)
         .where(TelegramChat.is_active.is_(True))
+        .where(TelegramChat.chat_type == "private")
         .order_by(TelegramChat.id.asc())
     )
 

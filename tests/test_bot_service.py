@@ -40,14 +40,41 @@ def _session_factory() -> sessionmaker[Session]:
 def test_upsert_telegram_chat_creates_and_updates() -> None:
     with _session() as session:
         upsert_telegram_chat(session, chat_id="123", chat_type="private", title=None)
-        upsert_telegram_chat(session, chat_id="123", chat_type="group", title="VPN Chat")
+        upsert_telegram_chat(
+            session,
+            chat_id="123",
+            chat_type="group",
+            title="VPN Chat",
+            is_active=False,
+        )
 
         rows = session.scalars(select(TelegramChat)).all()
         assert len(rows) == 1
         assert rows[0].chat_id == "123"
         assert rows[0].chat_type == "group"
         assert rows[0].title == "VPN Chat"
-        assert rows[0].is_active is True
+        assert rows[0].is_active is False
+
+
+def test_chat_subscription_status_uses_current_active_flag() -> None:
+    session_factory = _session_factory()
+    service = TelegramBotService(session_factory=session_factory)
+
+    service.set_chat_subscription(
+        chat_id="-100123",
+        chat_type="supergroup",
+        title="VPN Group",
+        is_active=True,
+    )
+    assert service.is_chat_subscribed(chat_id="-100123") is True
+
+    service.set_chat_subscription(
+        chat_id="-100123",
+        chat_type="supergroup",
+        title="VPN Group",
+        is_active=False,
+    )
+    assert service.is_chat_subscribed(chat_id="-100123") is False
 
 
 def test_get_today_or_latest_chart_prefers_today() -> None:

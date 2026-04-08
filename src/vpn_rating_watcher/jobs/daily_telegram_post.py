@@ -7,6 +7,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import FSInputFile
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -27,6 +28,7 @@ class DailyPostingResult:
     chart_date: date | None
     posted_count: int
     skipped_count: int
+    failed_count: int
     active_chat_count: int
 
 
@@ -104,6 +106,7 @@ def run_daily_posting_job(
                 chart_date=None,
                 posted_count=0,
                 skipped_count=0,
+                failed_count=0,
                 active_chat_count=active_chat_count,
             )
 
@@ -117,6 +120,7 @@ def run_daily_posting_job(
                 chart_date=chart.chart_date,
                 posted_count=0,
                 skipped_count=0,
+                failed_count=0,
                 active_chat_count=active_chat_count,
             )
         assert chart_path is not None
@@ -131,31 +135,49 @@ def run_daily_posting_job(
 
         posted_count = 0
         skipped_count = 0
+        failed_count = 0
+        failed_chats: list[str] = []
         try:
             for chat in active_chats:
                 if chat.last_posted_date is not None and chat.last_posted_date >= resolved_today:
                     skipped_count += 1
                     continue
 
-                asyncio.run(
-                    sender(
-                        token=token,
-                        chat_id=chat.chat_id,
-                        chart_path=chart_path,
-                        caption=caption,
+                try:
+                    asyncio.run(
+                        sender(
+                            token=token,
+                            chat_id=chat.chat_id,
+                            chart_path=chart_path,
+                            caption=caption,
+                        )
                     )
-                )
+                except (TelegramForbiddenError, TelegramBadRequest):
+                    failed_count += 1
+                    failed_chats.append(chat.chat_id)
+                    chat.is_active = False
+                    session.commit()
+                    continue
+
                 chat.last_posted_date = resolved_today
                 session.commit()
                 posted_count += 1
         finally:
             cleanup_temporary_chart_file(chart)
 
+        message = "Daily posting finished."
+        if failed_chats:
+            message += (
+                " Some chats were disabled because bot cannot send messages there: "
+                f"{', '.join(failed_chats)}"
+            )
+
         return DailyPostingResult(
             status="ok",
-            message="Daily posting finished.",
+            message=message,
             chart_date=chart.chart_date,
             posted_count=posted_count,
             skipped_count=skipped_count,
+            failed_count=failed_count,
             active_chat_count=len(active_chats),
         )
