@@ -602,9 +602,10 @@ def index() -> str:
               borderColor: resolveSeriesColor(item),
               borderWidth: 1,
               borderRadius: 4,
-              padding: [3, 7],
-              width: isMobile ? 108 : 124,
-              overflow: 'break'
+              padding: [3, 6],
+              width: isMobile ? 94 : 104,
+              overflow: 'truncate',
+              ellipsis: '…'
             },
             labelLayout: {
               moveOverlap: 'shiftY',
