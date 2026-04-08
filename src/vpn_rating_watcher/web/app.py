@@ -79,25 +79,27 @@ def index() -> str:
   <style>
     :root {
       color-scheme: light;
-      --bg: #f3f5fb;
-      --surface: #f8f9fc;
-      --panel: #eef1f8;
-      --panel-border: #d9dfeb;
-      --text: #1d2433;
-      --muted: #586277;
-      --accent: #2f70d0;
-      --accent-strong: #2459a8;
-      --accent-contrast: #f7f9fe;
-      --control-bg: #f4f6fb;
-      --control-hover: #e8edf8;
-      --control-active: #dbe4f7;
-      --chart-axis: #65718a;
-      --chart-grid: rgba(90, 106, 136, 0.24);
-      --chart-label-bg: rgba(243, 246, 252, 0.94);
-      --chart-label-stroke: rgba(223, 230, 242, 0.97);
-      --chart-line-shadow: rgba(95, 114, 148, 0.24);
-      --chart-export-bg: #f3f5fb;
-      --focus-ring: rgba(47, 112, 208, 0.35);
+      --bg: #f7f9fc;
+      --surface: #ffffff;
+      --panel: #f2f5fa;
+      --panel-border: #d8e0ee;
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent: #2563eb;
+      --accent-strong: #1d4ed8;
+      --accent-contrast: #eff6ff;
+      --control-bg: #eef3fb;
+      --control-hover: #e3ebf8;
+      --control-active: #d7e3f8;
+      --control-disabled-bg: #f4f7fc;
+      --control-disabled-text: #94a3b8;
+      --chart-axis: #475569;
+      --chart-grid: rgba(71, 85, 105, 0.2);
+      --chart-label-bg: rgba(255, 255, 255, 0.96);
+      --chart-label-stroke: rgba(191, 201, 216, 0.96);
+      --chart-line-shadow: rgba(99, 116, 143, 0.18);
+      --chart-export-bg: #f7f9fc;
+      --focus-ring: rgba(37, 99, 235, 0.35);
     }
     :root[data-theme='dark'] {
       color-scheme: dark;
@@ -155,7 +157,7 @@ def index() -> str:
     }
     .group-label {
       font-size: 14px;
-      color: var(--text);
+      color: var(--muted);
     }
     .segmented {
       display: inline-flex;
@@ -166,7 +168,7 @@ def index() -> str:
     }
     .segmented button {
       background: var(--control-bg);
-      color: var(--text);
+      color: var(--muted);
       border: 0;
       border-right: 1px solid var(--panel-border);
       padding: 8px 10px;
@@ -176,6 +178,12 @@ def index() -> str:
     }
     .segmented button:hover {
       background: var(--control-hover);
+      color: var(--text);
+    }
+    .segmented button:disabled {
+      background: var(--control-disabled-bg);
+      color: var(--control-disabled-text);
+      cursor: not-allowed;
     }
     .segmented button:last-child {
       border-right: 0;
@@ -208,6 +216,11 @@ def index() -> str:
     }
     .screenshot-button:hover {
       background: var(--control-hover);
+    }
+    .screenshot-button:disabled {
+      background: var(--control-disabled-bg);
+      color: var(--control-disabled-text);
+      cursor: not-allowed;
     }
     .screenshot-button svg {
       width: 18px;
@@ -311,6 +324,17 @@ def index() -> str:
   <script>
     const chart = echarts.init(document.getElementById('chart'));
     const OVERLAP_SPREAD_STEP = 0.24;
+    const LIGHT_THEME_SERIES_COLORS = {
+      'blancvpn': '#2563EB',
+      'vpn liberty': '#DC2626',
+      'vpn red shield': '#EA580C',
+      'наружу': '#CA8A04',
+      'durev vpn': '#16A34A',
+      'papervpn': '#65A30D',
+      'vpn generator': '#0891B2',
+      'tunnelbear': '#92400E',
+      'amneziavpn': '#C2410C'
+    };
     const state = {
       days: 30,
       topN: 10,
@@ -392,8 +416,22 @@ def index() -> str:
         gridColor: cssVar('--chart-grid'),
         labelBackground: cssVar('--chart-label-bg'),
         labelStroke: cssVar('--chart-label-stroke'),
-        lineShadow: cssVar('--chart-line-shadow')
+        lineShadow: cssVar('--chart-line-shadow'),
+        textColor: cssVar('--text')
       };
+    }
+
+    function normalizeVpnName(name) {
+      return String(name || '').trim().toLowerCase();
+    }
+
+    function resolveSeriesColor(item) {
+      const activeTheme = resolveActiveTheme(state.theme);
+      if (activeTheme !== 'light') {
+        return item.color || undefined;
+      }
+      const lightColor = LIGHT_THEME_SERIES_COLORS[normalizeVpnName(item.name)];
+      return lightColor || item.color || undefined;
     }
 
     const RU_MONTHS_SHORT = [
@@ -512,7 +550,12 @@ def index() -> str:
 
         const option = {
           backgroundColor: 'transparent',
-          tooltip: { trigger: 'axis' },
+          tooltip: {
+            trigger: 'axis',
+            backgroundColor: chartTheme.labelBackground,
+            borderColor: chartTheme.labelStroke,
+            textStyle: { color: chartTheme.textColor }
+          },
           legend: { show: false },
           grid: {
             left: 10,
@@ -524,12 +567,16 @@ def index() -> str:
           xAxis: {
             type: 'category',
             data: payload.labels,
+            axisLine: { lineStyle: { color: chartTheme.gridColor } },
+            axisTick: { lineStyle: { color: chartTheme.gridColor } },
             axisLabel: { color: chartTheme.axisColor, rotate: isMobile ? 35 : 40 }
           },
           yAxis: {
             type: 'value',
             min: 0,
             max: 36,
+            axisLine: { lineStyle: { color: chartTheme.gridColor } },
+            axisTick: { show: false },
             axisLabel: { color: chartTheme.axisColor },
             splitLine: {
               lineStyle: {
@@ -548,24 +595,33 @@ def index() -> str:
             endLabel: {
               show: true,
               formatter: '{a}',
-              color: item.color || '#dce4ff',
+              color: chartTheme.textColor,
               textBorderColor: chartTheme.labelStroke,
-              textBorderWidth: 2,
+              textBorderWidth: 1.5,
               backgroundColor: chartTheme.labelBackground,
+              borderColor: chartTheme.labelStroke,
+              borderWidth: 1,
               borderRadius: 4,
-              padding: [2, 6],
+              padding: [3, 7],
               width: isMobile ? 108 : 124,
               overflow: 'break'
             },
             labelLayout: {
-              moveOverlap: 'shiftY'
+              moveOverlap: 'shiftY',
+              hideOverlap: false
             },
             lineStyle: {
-              width: 3,
+              width: window.devicePixelRatio >= 2 ? 2.6 : 3,
               shadowColor: chartTheme.lineShadow,
               shadowBlur: 3
             },
-            color: item.color || undefined,
+            emphasis: {
+              focus: 'series',
+              lineStyle: {
+                width: window.devicePixelRatio >= 2 ? 3.2 : 3.6
+              }
+            },
+            color: resolveSeriesColor(item),
             data: item.plotValues
           }))
         };
