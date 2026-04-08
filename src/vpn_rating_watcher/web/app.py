@@ -108,6 +108,9 @@ def index() -> str:
       align-items: center;
       margin-bottom: 10px;
     }
+    .toolbar-spacer {
+      margin-left: auto;
+    }
     .control-group {
       display: inline-flex;
       align-items: center;
@@ -140,6 +143,27 @@ def index() -> str:
       background: var(--accent);
       color: #09101f;
       font-weight: 600;
+    }
+    .icon-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      border: 1px solid #2c3348;
+      background: #10131d;
+      color: var(--text);
+      cursor: pointer;
+      transition: background 0.15s ease-in-out;
+    }
+    .icon-button:hover {
+      background: #1a2030;
+    }
+    .icon-button svg {
+      width: 18px;
+      height: 18px;
+      display: block;
     }
     #chart {
       width: 100%;
@@ -184,6 +208,14 @@ def index() -> str:
             <button type='button' data-mode='median_3d'>median 3d</button>
           </div>
         </div>
+        <div class='toolbar-spacer'></div>
+        <button
+          id='saveChartButton'
+          class='icon-button'
+          type='button'
+          aria-label='Сохранить скриншот графика'
+          title='Сохранить скриншот'
+        >📸</button>
       </div>
       <div id='chart'></div>
       <div class='meta' id='meta'>Загрузка...</div>
@@ -243,6 +275,24 @@ def index() -> str:
         timeZone: 'UTC'
       }).format(date);
       return `${datePart} ${timePart} UTC`;
+    }
+
+    function setupScreenshotButton() {
+      const saveButton = document.getElementById('saveChartButton');
+      saveButton.addEventListener('click', () => {
+        const dataUrl = chart.getDataURL({
+          type: 'png',
+          pixelRatio: 2,
+          backgroundColor: '#0f111a'
+        });
+        const link = document.createElement('a');
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        link.href = dataUrl;
+        link.download = `vpn-rating-${timestamp}.png`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      });
     }
 
     function sourceHtml(sourceName) {
@@ -389,6 +439,7 @@ def index() -> str:
     setupSegmentedButtons('daysButtons', 'days', 'days');
     setupSegmentedButtons('topButtons', 'topN', 'topN');
     setupSegmentedButtons('modeButtons', 'mode', 'mode');
+    setupScreenshotButton();
     window.addEventListener('resize', () => chart.resize());
 
     loadChart();
