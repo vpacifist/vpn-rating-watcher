@@ -328,12 +328,12 @@ def index() -> str:
       'blancvpn': '#2563EB',
       'vpn liberty': '#DC2626',
       'vpn red shield': '#EA580C',
-      'наружу': '#CA8A04',
-      'durev vpn': '#16A34A',
+      'наружу': '#EAB308',
+      'durev vpn': '#3B82F6',
       'papervpn': '#65A30D',
       'vpn generator': '#0891B2',
       'tunnelbear': '#92400E',
-      'amneziavpn': '#C2410C'
+      'amneziavpn': '#FBB26A'
     };
     const state = {
       days: 30,
@@ -592,14 +592,14 @@ def index() -> str:
             connectNulls: true,
             showSymbol: false,
             z: 10 + index,
+            clip: false,
             endLabel: {
               show: true,
               formatter: '{a}',
-              color: chartTheme.textColor,
-              textBorderColor: chartTheme.labelStroke,
-              textBorderWidth: 1.5,
+              color: resolveSeriesColor(item),
+              textBorderWidth: 0,
               backgroundColor: chartTheme.labelBackground,
-              borderColor: chartTheme.labelStroke,
+              borderColor: resolveSeriesColor(item),
               borderWidth: 1,
               borderRadius: 4,
               padding: [3, 7],
@@ -616,10 +616,16 @@ def index() -> str:
               shadowBlur: 3
             },
             emphasis: {
-              focus: 'series',
+              focus: 'none',
               lineStyle: {
                 width: window.devicePixelRatio >= 2 ? 3.2 : 3.6
               }
+            },
+            blur: {
+              lineStyle: { opacity: 1 },
+              itemStyle: { opacity: 1 },
+              label: { opacity: 1 },
+              endLabel: { opacity: 1 }
             },
             color: resolveSeriesColor(item),
             data: item.plotValues

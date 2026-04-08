@@ -33,7 +33,7 @@ VPN_LINE_COLORS: dict[str, str] = {
     "blancvpn": "#3183ff",
     "vpn generator": "#A3D9F9",
     "amneziavpn": "#FBB26A",
-    "durev vpn": "#00FF00",
+    "durev vpn": "#3B82F6",
     "наружу": "#FFD600",
     "tunnelbear": "#C08D4A",
 }
