@@ -533,6 +533,8 @@ def index() -> str:
     }
 
     function buildTooltipFormatter(series) {
+      const escapeRichText = (value) => String(value ?? '').replace(/([{}|\\])/g, '\\$1');
+
       return (params) => {
         if (!Array.isArray(params) || params.length === 0) {
           return '';
@@ -555,17 +557,9 @@ def index() -> str:
           const seriesItem = series.find((entry) => entry.name === item.seriesName);
           const rawValue = seriesItem?.values?.[index];
           const formattedValue = rawValue == null ? '—' : String(Math.round(rawValue));
-          return (
-            `<tr><td style="border:0; padding:6px 8px;">${item.marker}${item.seriesName}</td>` +
-            `<td style="border:0; padding:6px 8px; text-align:right;">` +
-            `<strong>${formattedValue}</strong></td></tr>`
-          );
-        }).join('');
-        return (
-          `<div><strong>${formatRuDate(axisValue)}</strong></div>` +
-          `<table style="margin-top:6px; min-width:220px; border-collapse:separate;">` +
-          `<tbody>${rows}</tbody></table>`
-        );
+          return `{name|${escapeRichText(item.seriesName)}}{value|${escapeRichText(formattedValue)}}`;
+        }).join('\n');
+        return `{header|${escapeRichText(formatRuDate(axisValue))}}\n${rows}`;
       };
     }
 
@@ -592,11 +586,38 @@ def index() -> str:
           backgroundColor: 'transparent',
           tooltip: {
             trigger: 'axis',
+            renderMode: 'richText',
             confine: true,
             transitionDuration: 0,
             backgroundColor: chartTheme.labelBackground,
             borderColor: chartTheme.labelStroke,
-            textStyle: { color: chartTheme.textColor },
+            textStyle: {
+              color: chartTheme.textColor,
+              fontSize: 12,
+              lineHeight: 20
+            },
+            padding: [10, 12],
+            rich: {
+              header: {
+                fontWeight: 700,
+                color: chartTheme.textColor,
+                lineHeight: 22,
+                padding: [0, 0, 6, 0]
+              },
+              name: {
+                color: chartTheme.textColor,
+                width: 145,
+                lineHeight: 18,
+                padding: [0, 12, 0, 0]
+              },
+              value: {
+                color: chartTheme.textColor,
+                align: 'right',
+                fontWeight: 700,
+                width: 34,
+                lineHeight: 18
+              }
+            },
             formatter: buildTooltipFormatter(payload.series)
           },
           legend: { show: false },
