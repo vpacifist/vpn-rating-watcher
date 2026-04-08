@@ -530,22 +530,7 @@ def index() -> str:
       }));
     }
 
-    function buildLatestValueMap(series) {
-      const latestValueMap = new Map();
-      series.forEach((item) => {
-        for (let index = item.values.length - 1; index >= 0; index -= 1) {
-          const value = item.values[index];
-          if (value != null) {
-            latestValueMap.set(item.name, value);
-            return;
-          }
-        }
-        latestValueMap.set(item.name, Number.POSITIVE_INFINITY);
-      });
-      return latestValueMap;
-    }
-
-    function buildTooltipFormatter(series, latestValueMap) {
+    function buildTooltipFormatter(series) {
       return (params) => {
         if (!Array.isArray(params) || params.length === 0) {
           return '';
@@ -553,10 +538,14 @@ def index() -> str:
         const axisValue = params[0].axisValue;
         const index = params[0].dataIndex;
         const sorted = [...params].sort((a, b) => {
-          const aValue = latestValueMap.get(a.seriesName) ?? Number.POSITIVE_INFINITY;
-          const bValue = latestValueMap.get(b.seriesName) ?? Number.POSITIVE_INFINITY;
+          const aSeriesItem = series.find((entry) => entry.name === a.seriesName);
+          const bSeriesItem = series.find((entry) => entry.name === b.seriesName);
+          const aRawValue = aSeriesItem?.values?.[index];
+          const bRawValue = bSeriesItem?.values?.[index];
+          const aValue = aRawValue == null ? Number.NEGATIVE_INFINITY : aRawValue;
+          const bValue = bRawValue == null ? Number.NEGATIVE_INFINITY : bRawValue;
           if (aValue !== bValue) {
-            return aValue - bValue;
+            return bValue - aValue;
           }
           return a.seriesName.localeCompare(b.seriesName);
         });
@@ -565,13 +554,14 @@ def index() -> str:
           const rawValue = seriesItem?.values?.[index];
           const formattedValue = rawValue == null ? '—' : String(Math.round(rawValue));
           return (
-            `<tr><td>${item.marker}${item.seriesName}</td>` +
-            `<td style="text-align:right;"><strong>${formattedValue}</strong></td></tr>`
+            `<tr><td style="border:0; padding:6px 8px;">${item.marker}${item.seriesName}</td>` +
+            `<td style="border:0; padding:6px 8px; text-align:right;"><strong>${formattedValue}</strong></td></tr>`
           );
         }).join('');
         return (
           `<div><strong>${formatRuDate(axisValue)}</strong></div>` +
-          `<table style="margin-top:6px; min-width:220px;"><tbody>${rows}</tbody></table>`
+          `<table style="margin-top:6px; min-width:220px; border-collapse:separate;">` +
+          `<tbody>${rows}</tbody></table>`
         );
       };
     }
@@ -593,7 +583,6 @@ def index() -> str:
           return;
         }
         const spreadSeries = spreadOverlappingSeries(payload.series);
-        const latestValueMap = buildLatestValueMap(payload.series);
         const chartTheme = buildChartTheme();
 
         const option = {
@@ -603,7 +592,7 @@ def index() -> str:
             backgroundColor: chartTheme.labelBackground,
             borderColor: chartTheme.labelStroke,
             textStyle: { color: chartTheme.textColor },
-            formatter: buildTooltipFormatter(payload.series, latestValueMap)
+            formatter: buildTooltipFormatter(payload.series)
           },
           legend: { show: false },
           grid: {
