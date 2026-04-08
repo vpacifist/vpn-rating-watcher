@@ -215,12 +215,7 @@ def index() -> str:
           type='button'
           aria-label='Сохранить скриншот графика'
           title='Сохранить скриншот'
-        >
-          <svg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'>
-            <path d='M4 7.5C4 6.67157 4.67157 6 5.5 6H8.1C8.49782 6 8.87936 5.84196 9.16066 5.56066L10.0607 4.66066C10.3419 4.37936 10.7235 4.22132 11.1213 4.22132H12.8787C13.2765 4.22132 13.6581 4.37936 13.9393 4.66066L14.8393 5.56066C15.1206 5.84196 15.5022 6 15.9 6H18.5C19.3284 6 20 6.67157 20 7.5V18.5C20 19.3284 19.3284 20 18.5 20H5.5C4.67157 20 4 19.3284 4 18.5V7.5Z' stroke='currentColor' stroke-width='1.5'/>
-            <circle cx='12' cy='13' r='3.5' stroke='currentColor' stroke-width='1.5'/>
-          </svg>
-        </button>
+        >📸</button>
       </div>
       <div id='chart'></div>
       <div class='meta' id='meta'>Загрузка...</div>
