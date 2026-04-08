@@ -564,7 +564,10 @@ def index() -> str:
           const seriesItem = series.find((entry) => entry.name === item.seriesName);
           const rawValue = seriesItem?.values?.[index];
           const formattedValue = rawValue == null ? '—' : String(Math.round(rawValue));
-          return `<tr><td>${item.marker}${item.seriesName}</td><td style="text-align:right;"><strong>${formattedValue}</strong></td></tr>`;
+          return (
+            `<tr><td>${item.marker}${item.seriesName}</td>` +
+            `<td style="text-align:right;"><strong>${formattedValue}</strong></td></tr>`
+          );
         }).join('');
         return (
           `<div><strong>${formatRuDate(axisValue)}</strong></div>` +
