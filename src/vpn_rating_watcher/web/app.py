@@ -108,15 +108,39 @@ def index() -> str:
       align-items: center;
       margin-bottom: 10px;
     }
-    .toolbar select, .toolbar button {
-      background: #10131d;
+    .control-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .group-label {
+      font-size: 14px;
       color: var(--text);
+    }
+    .segmented {
+      display: inline-flex;
       border: 1px solid #2c3348;
       border-radius: 8px;
+      overflow: hidden;
+      background: #10131d;
+    }
+    .segmented button {
+      background: #10131d;
+      color: var(--text);
+      border: 0;
+      border-right: 1px solid #2c3348;
       padding: 8px 10px;
       font-size: 14px;
+      cursor: pointer;
     }
-    .toolbar button { cursor: pointer; }
+    .segmented button:last-child {
+      border-right: 0;
+    }
+    .segmented button.active {
+      background: var(--accent);
+      color: #09101f;
+      font-weight: 600;
+    }
     #chart {
       width: 100%;
       min-height: 52vh;
@@ -127,36 +151,39 @@ def index() -> str:
       font-size: 13px;
       margin-top: 8px;
     }
+    .meta a {
+      color: inherit;
+    }
   </style>
 </head>
 <body>
   <div class='wrap'>
-    <h2>VPN ratings (interactive)</h2>
+    <h2>Рейтинг VPN</h2>
     <div class='card'>
       <div class='toolbar'>
-        <label>Период:
-          <select id='days'>
-            <option value='14'>14 дней</option>
-            <option value='30' selected>30 дней</option>
-            <option value='60'>60 дней</option>
-            <option value='90'>90 дней</option>
-          </select>
-        </label>
-        <label>Топ:
-          <select id='topN'>
-            <option value='5'>5</option>
-            <option value='10' selected>10</option>
-            <option value='15'>15</option>
-            <option value='20'>20</option>
-          </select>
-        </label>
-        <button id='refreshBtn'>Обновить</button>
-        <label>Режим:
-          <select id='mode'>
-            <option value='daily' selected>Daily</option>
-            <option value='median_3d'>Median 3d</option>
-          </select>
-        </label>
+        <div class='control-group'>
+          <span class='group-label'>Период:</span>
+          <div id='daysButtons' class='segmented'>
+            <button type='button' data-days='7'>7d</button>
+            <button type='button' data-days='14'>14d</button>
+            <button type='button' data-days='30' class='active'>30d</button>
+            <button type='button' data-days='90'>90d</button>
+          </div>
+        </div>
+        <div class='control-group'>
+          <span class='group-label'>Топ:</span>
+          <div id='topButtons' class='segmented'>
+            <button type='button' data-top-n='5'>5</button>
+            <button type='button' data-top-n='10' class='active'>10</button>
+          </div>
+        </div>
+        <div class='control-group'>
+          <span class='group-label'>Режим:</span>
+          <div id='modeButtons' class='segmented'>
+            <button type='button' data-mode='daily' class='active'>daily</button>
+            <button type='button' data-mode='median_3d'>median 3d</button>
+          </div>
+        </div>
       </div>
       <div id='chart'></div>
       <div class='meta' id='meta'>Загрузка...</div>
@@ -165,6 +192,67 @@ def index() -> str:
   <script>
     const chart = echarts.init(document.getElementById('chart'));
     const OVERLAP_SPREAD_STEP = 0.24;
+    const state = {
+      days: 30,
+      topN: 10,
+      mode: 'daily'
+    };
+
+    function setupSegmentedButtons(containerId, valueAttribute, stateKey) {
+      const container = document.getElementById(containerId);
+      const buttons = Array.from(container.querySelectorAll('button'));
+
+      const activateValue = (rawValue) => {
+        const value = Number.isNaN(Number(rawValue)) ? rawValue : Number(rawValue);
+        state[stateKey] = value;
+        buttons.forEach((button) => {
+          const buttonValue = button.dataset[valueAttribute];
+          button.classList.toggle('active', String(buttonValue) === String(rawValue));
+        });
+        loadChart();
+      };
+
+      buttons.forEach((button) => {
+        button.addEventListener('click', () => activateValue(button.dataset[valueAttribute]));
+      });
+    }
+
+    function formatRuDate(isoDate) {
+      const date = new Date(`${isoDate}T00:00:00Z`);
+      return new Intl.DateTimeFormat('ru-RU', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'UTC'
+      }).format(date).replace('.', '');
+    }
+
+    function formatRuDateTime(isoDateTime) {
+      const date = new Date(isoDateTime);
+      const datePart = new Intl.DateTimeFormat('ru-RU', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'UTC'
+      }).format(date).replace('.', '');
+      const timePart = new Intl.DateTimeFormat('ru-RU', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'UTC'
+      }).format(date);
+      return `${datePart} ${timePart}`;
+    }
+
+    function sourceHtml(sourceName) {
+      if (sourceName === 'maximkatz') {
+        return (
+          "Источник: <a href='https://vpn.maximkatz.com/' " +
+          "target='_blank' rel='noopener noreferrer'>maximkatz</a>"
+        );
+      }
+      return `Источник: ${sourceName}`;
+    }
 
     function spreadOverlappingSeries(series) {
       if (!Array.isArray(series) || series.length < 2) {
@@ -208,10 +296,8 @@ def index() -> str:
     async function loadChart() {
       try {
         const isMobile = window.matchMedia('(max-width: 768px)').matches;
-        const days = document.getElementById('days').value;
-        const topN = document.getElementById('topN').value;
-        const mode = document.getElementById('mode').value;
-        const res = await fetch(`/api/chart-data?days=${days}&top_n=${topN}&mode=${mode}`);
+        const query = `/api/chart-data?days=${state.days}&top_n=${state.topN}&mode=${state.mode}`;
+        const res = await fetch(query);
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`);
         }
@@ -286,11 +372,12 @@ def index() -> str:
         };
         chart.setOption(option, true);
 
-        document.getElementById('meta').textContent =
-          `Источник: ${payload.source_name} · ` +
-          `Режим: ${mode} · ` +
-          `Диапазон: ${payload.date_range.from}..${payload.date_range.to} · ` +
-          `Обновлено: ${payload.updated_at_utc}`;
+        document.getElementById('meta').innerHTML =
+          `${sourceHtml(payload.source_name)} · ` +
+          `Режим: ${state.mode === 'median_3d' ? 'median 3d' : 'daily'} · ` +
+          `Диапазон: ${formatRuDate(payload.date_range.from)} ` +
+          `– ${formatRuDate(payload.date_range.to)} · ` +
+          `Обновлено: ${formatRuDateTime(payload.updated_at_utc)}`;
       } catch (error) {
         chart.clear();
         document.getElementById('meta').textContent =
@@ -298,10 +385,9 @@ def index() -> str:
       }
     }
 
-    document.getElementById('refreshBtn').addEventListener('click', loadChart);
-    document.getElementById('days').addEventListener('change', loadChart);
-    document.getElementById('topN').addEventListener('change', loadChart);
-    document.getElementById('mode').addEventListener('change', loadChart);
+    setupSegmentedButtons('daysButtons', 'days', 'days');
+    setupSegmentedButtons('topButtons', 'topN', 'topN');
+    setupSegmentedButtons('modeButtons', 'mode', 'mode');
     window.addEventListener('resize', () => chart.resize());
 
     loadChart();
