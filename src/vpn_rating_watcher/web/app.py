@@ -78,12 +78,48 @@ def index() -> str:
   <script src='https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js'></script>
   <style>
     :root {
+      color-scheme: light;
+      --bg: #f3f5fb;
+      --surface: #f8f9fc;
+      --panel: #eef1f8;
+      --panel-border: #d9dfeb;
+      --text: #1d2433;
+      --muted: #586277;
+      --accent: #2f70d0;
+      --accent-strong: #2459a8;
+      --accent-contrast: #f7f9fe;
+      --control-bg: #f4f6fb;
+      --control-hover: #e8edf8;
+      --control-active: #dbe4f7;
+      --chart-axis: #65718a;
+      --chart-grid: rgba(90, 106, 136, 0.24);
+      --chart-label-bg: rgba(243, 246, 252, 0.94);
+      --chart-label-stroke: rgba(223, 230, 242, 0.97);
+      --chart-line-shadow: rgba(95, 114, 148, 0.24);
+      --chart-export-bg: #f3f5fb;
+      --focus-ring: rgba(47, 112, 208, 0.35);
+    }
+    :root[data-theme='dark'] {
       color-scheme: dark;
-      --bg: #0f111a;
-      --panel: #171a26;
-      --text: #f5f7ff;
-      --muted: #a8b0c7;
-      --accent: #4ea1ff;
+      --bg: #111523;
+      --surface: #161b2a;
+      --panel: #1a2030;
+      --panel-border: #2b3348;
+      --text: #f2f5ff;
+      --muted: #a7b0c6;
+      --accent: #5ba4ff;
+      --accent-strong: #4189e2;
+      --accent-contrast: #0e1728;
+      --control-bg: #141a29;
+      --control-hover: #1d2537;
+      --control-active: #263048;
+      --chart-axis: #c4cdea;
+      --chart-grid: rgba(196, 205, 234, 0.3);
+      --chart-label-bg: rgba(14, 19, 34, 0.82);
+      --chart-label-stroke: rgba(9, 13, 23, 0.95);
+      --chart-line-shadow: rgba(9, 13, 23, 0.45);
+      --chart-export-bg: #111523;
+      --focus-ring: rgba(91, 164, 255, 0.4);
     }
     body {
       margin: 0;
@@ -98,6 +134,7 @@ def index() -> str:
     }
     .card {
       background: var(--panel);
+      border: 1px solid var(--panel-border);
       border-radius: 12px;
       padding: 12px;
     }
@@ -122,26 +159,35 @@ def index() -> str:
     }
     .segmented {
       display: inline-flex;
-      border: 1px solid #2c3348;
+      border: 1px solid var(--panel-border);
       border-radius: 8px;
       overflow: hidden;
-      background: #10131d;
+      background: var(--control-bg);
     }
     .segmented button {
-      background: #10131d;
+      background: var(--control-bg);
       color: var(--text);
       border: 0;
-      border-right: 1px solid #2c3348;
+      border-right: 1px solid var(--panel-border);
       padding: 8px 10px;
       font-size: 14px;
       cursor: pointer;
+      transition: background 0.15s ease-in-out, color 0.15s ease-in-out;
+    }
+    .segmented button:hover {
+      background: var(--control-hover);
     }
     .segmented button:last-child {
       border-right: 0;
     }
+    .segmented button:focus-visible,
+    .screenshot-button:focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
+    }
     .segmented button.active {
       background: var(--accent);
-      color: #09101f;
+      color: var(--accent-contrast);
       font-weight: 600;
     }
     .screenshot-button {
@@ -151,8 +197,8 @@ def index() -> str:
       padding: 0 12px;
       min-height: 38px;
       border-radius: 8px;
-      border: 1px solid #2c3348;
-      background: #10131d;
+      border: 1px solid var(--panel-border);
+      background: var(--control-bg);
       color: var(--text);
       cursor: pointer;
       transition: background 0.15s ease-in-out;
@@ -161,7 +207,7 @@ def index() -> str:
       text-transform: lowercase;
     }
     .screenshot-button:hover {
-      background: #1a2030;
+      background: var(--control-hover);
     }
     .screenshot-button svg {
       width: 18px;
@@ -180,6 +226,24 @@ def index() -> str:
     }
     .meta a {
       color: inherit;
+    }
+    input, select, textarea, button {
+      font: inherit;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      background: var(--surface);
+      color: var(--text);
+    }
+    th, td {
+      border: 1px solid var(--panel-border);
+      padding: 8px;
+    }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--panel-border);
+      color: var(--text);
     }
   </style>
 </head>
@@ -212,6 +276,14 @@ def index() -> str:
           </div>
         </div>
         <div class='toolbar-spacer'></div>
+        <div class='control-group'>
+          <span class='group-label'>Тема:</span>
+          <div id='themeButtons' class='segmented'>
+            <button type='button' data-theme='light' class='active'>light</button>
+            <button type='button' data-theme='dark'>dark</button>
+            <button type='button' data-theme='system'>system</button>
+          </div>
+        </div>
         <button
           id='saveChartButton'
           class='screenshot-button'
@@ -224,7 +296,7 @@ def index() -> str:
             <path
               d='M12 3v12m0 0 4-4m-4 4-4-4M5 14v3a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-3'
               fill='none'
-              stroke='#ffffff'
+              stroke='currentColor'
               stroke-width='2.2'
               stroke-linecap='round'
               stroke-linejoin='round'
@@ -242,8 +314,11 @@ def index() -> str:
     const state = {
       days: 30,
       topN: 10,
-      mode: 'daily'
+      mode: 'daily',
+      theme: 'light'
     };
+    const THEME_STORAGE_KEY = 'vrw-theme-preference';
+    const systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
 
     function setupSegmentedButtons(containerId, valueAttribute, stateKey) {
       const container = document.getElementById(containerId);
@@ -262,6 +337,63 @@ def index() -> str:
       buttons.forEach((button) => {
         button.addEventListener('click', () => activateValue(button.dataset[valueAttribute]));
       });
+    }
+
+    function cssVar(name) {
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    function resolveActiveTheme(preference) {
+      if (preference === 'system') {
+        return systemThemeMedia.matches ? 'dark' : 'light';
+      }
+      return preference === 'dark' ? 'dark' : 'light';
+    }
+
+    function applyTheme(preference, shouldReloadChart = true) {
+      state.theme = preference;
+      localStorage.setItem(THEME_STORAGE_KEY, preference);
+      const activeTheme = resolveActiveTheme(preference);
+      document.documentElement.dataset.theme = activeTheme;
+      document.documentElement.style.colorScheme = activeTheme;
+      if (shouldReloadChart) {
+        loadChart();
+      }
+    }
+
+    function setupThemeButtons() {
+      const themeContainer = document.getElementById('themeButtons');
+      const themeButtons = Array.from(themeContainer.querySelectorAll('button'));
+      const stored = localStorage.getItem(THEME_STORAGE_KEY);
+      const initialPreference = stored === 'dark' || stored === 'system' ? stored : 'light';
+      applyTheme(initialPreference, false);
+
+      themeButtons.forEach((button) => {
+        button.classList.toggle('active', button.dataset.theme === initialPreference);
+        button.addEventListener('click', () => {
+          const nextTheme = button.dataset.theme || 'light';
+          themeButtons.forEach((item) => {
+            item.classList.toggle('active', item.dataset.theme === nextTheme);
+          });
+          applyTheme(nextTheme);
+        });
+      });
+
+      systemThemeMedia.addEventListener('change', () => {
+        if (state.theme === 'system') {
+          applyTheme('system');
+        }
+      });
+    }
+
+    function buildChartTheme() {
+      return {
+        axisColor: cssVar('--chart-axis'),
+        gridColor: cssVar('--chart-grid'),
+        labelBackground: cssVar('--chart-label-bg'),
+        labelStroke: cssVar('--chart-label-stroke'),
+        lineShadow: cssVar('--chart-line-shadow')
+      };
     }
 
     const RU_MONTHS_SHORT = [
@@ -298,7 +430,7 @@ def index() -> str:
         const dataUrl = chart.getDataURL({
           type: 'png',
           pixelRatio: 2,
-          backgroundColor: '#0f111a'
+          backgroundColor: cssVar('--chart-export-bg')
         });
         const link = document.createElement('a');
         const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
@@ -376,6 +508,7 @@ def index() -> str:
           return;
         }
         const spreadSeries = spreadOverlappingSeries(payload.series);
+        const chartTheme = buildChartTheme();
 
         const option = {
           backgroundColor: 'transparent',
@@ -391,16 +524,16 @@ def index() -> str:
           xAxis: {
             type: 'category',
             data: payload.labels,
-            axisLabel: { color: '#c9d2ef', rotate: isMobile ? 35 : 40 }
+            axisLabel: { color: chartTheme.axisColor, rotate: isMobile ? 35 : 40 }
           },
           yAxis: {
             type: 'value',
             min: 0,
             max: 36,
-            axisLabel: { color: '#c9d2ef' },
+            axisLabel: { color: chartTheme.axisColor },
             splitLine: {
               lineStyle: {
-                color: 'rgba(201, 210, 239, 0.28)',
+                color: chartTheme.gridColor,
                 width: 1
               }
             }
@@ -416,9 +549,9 @@ def index() -> str:
               show: true,
               formatter: '{a}',
               color: item.color || '#dce4ff',
-              textBorderColor: 'rgba(11, 14, 25, 0.95)',
+              textBorderColor: chartTheme.labelStroke,
               textBorderWidth: 2,
-              backgroundColor: 'rgba(11, 14, 25, 0.78)',
+              backgroundColor: chartTheme.labelBackground,
               borderRadius: 4,
               padding: [2, 6],
               width: isMobile ? 108 : 124,
@@ -429,7 +562,7 @@ def index() -> str:
             },
             lineStyle: {
               width: 3,
-              shadowColor: 'rgba(11, 14, 25, 0.4)',
+              shadowColor: chartTheme.lineShadow,
               shadowBlur: 3
             },
             color: item.color || undefined,
@@ -454,6 +587,7 @@ def index() -> str:
     setupSegmentedButtons('daysButtons', 'days', 'days');
     setupSegmentedButtons('topButtons', 'topN', 'topN');
     setupSegmentedButtons('modeButtons', 'mode', 'mode');
+    setupThemeButtons();
     setupScreenshotButton();
     window.addEventListener('resize', () => chart.resize());
 
