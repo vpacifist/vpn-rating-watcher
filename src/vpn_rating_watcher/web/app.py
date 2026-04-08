@@ -9,6 +9,7 @@ from vpn_rating_watcher.charts.service import (
     query_chart_scores,
     resolve_date_range,
 )
+from vpn_rating_watcher.core.settings import get_settings
 from vpn_rating_watcher.db.session import get_session_factory
 from vpn_rating_watcher.web.payload import build_chart_payload
 
@@ -50,6 +51,7 @@ def api_chart_data(
         start_date=date_range.start_date,
         end_date=date_range.end_date,
         source_name=source_name,
+        source_timezone=get_settings().source_timezone,
         top_n=top_n,
     )
 
@@ -378,7 +380,8 @@ def index() -> str:
           `Режим: ${state.mode === 'median_3d' ? 'median 3d' : 'daily'} · ` +
           `Диапазон: ${formatRuDate(payload.date_range.from)} ` +
           `– ${formatRuDate(payload.date_range.to)} · ` +
-          `Обновлено: ${formatRuDateTime(payload.updated_at_utc)}`;
+          `Обновлено: ${formatRuDateTime(payload.updated_at_utc)} · ` +
+          `Часовой пояс: ${payload.source_timezone}`;
       } catch (error) {
         chart.clear();
         document.getElementById('meta').textContent =

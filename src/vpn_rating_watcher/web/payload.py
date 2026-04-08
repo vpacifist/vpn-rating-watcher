@@ -20,6 +20,7 @@ def build_chart_payload(
     start_date: date,
     end_date: date,
     source_name: str,
+    source_timezone: str,
     top_n: int | None,
 ) -> dict:
     if rows:
@@ -62,4 +63,5 @@ def build_chart_payload(
         "labels": labels,
         "series": series,
         "updated_at_utc": datetime.now(tz=timezone.utc).isoformat(),
+        "source_timezone": source_timezone,
     }

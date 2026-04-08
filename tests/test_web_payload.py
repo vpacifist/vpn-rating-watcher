@@ -18,6 +18,7 @@ def test_build_chart_payload_builds_dense_date_grid_with_nulls() -> None:
         start_date=date(2026, 3, 1),
         end_date=date(2026, 3, 3),
         source_name="maximkatz",
+        source_timezone="UTC",
         top_n=None,
     )
 
@@ -40,6 +41,7 @@ def test_build_chart_payload_trims_leading_empty_dates() -> None:
         start_date=date(2026, 3, 1),
         end_date=date(2026, 3, 4),
         source_name="maximkatz",
+        source_timezone="UTC",
         top_n=None,
     )
 
@@ -60,6 +62,7 @@ def test_build_chart_payload_applies_top_n() -> None:
         start_date=date(2026, 3, 1),
         end_date=date(2026, 3, 2),
         source_name="maximkatz",
+        source_timezone="UTC",
         top_n=2,
     )
 
@@ -76,7 +79,9 @@ def test_build_chart_payload_includes_brand_color() -> None:
         start_date=date(2026, 3, 2),
         end_date=date(2026, 3, 2),
         source_name="maximkatz",
+        source_timezone="UTC",
         top_n=None,
     )
 
     assert payload["series"][0]["color"] == "#ba0300"
+    assert payload["source_timezone"] == "UTC"
