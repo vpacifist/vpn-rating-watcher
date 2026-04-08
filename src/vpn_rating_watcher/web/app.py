@@ -217,24 +217,25 @@ def index() -> str:
       });
     }
 
+    const RU_MONTHS_SHORT = [
+      'янв', 'фев', 'мар', 'апр', 'май', 'июн',
+      'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'
+    ];
+
     function formatRuDate(isoDate) {
       const date = new Date(`${isoDate}T00:00:00Z`);
-      return new Intl.DateTimeFormat('ru-RU', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-        timeZone: 'UTC'
-      }).format(date).replace('.', '');
+      const day = date.getUTCDate();
+      const month = RU_MONTHS_SHORT[date.getUTCMonth()];
+      const year = date.getUTCFullYear();
+      return `${day} ${month} ${year}`;
     }
 
     function formatRuDateTime(isoDateTime) {
       const date = new Date(isoDateTime);
-      const datePart = new Intl.DateTimeFormat('ru-RU', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-        timeZone: 'UTC'
-      }).format(date).replace('.', '');
+      const day = date.getUTCDate();
+      const month = RU_MONTHS_SHORT[date.getUTCMonth()];
+      const year = date.getUTCFullYear();
+      const datePart = `${day} ${month} ${year}`;
       const timePart = new Intl.DateTimeFormat('ru-RU', {
         hour: '2-digit',
         minute: '2-digit',
