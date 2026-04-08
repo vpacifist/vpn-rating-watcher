@@ -557,7 +557,9 @@ def index() -> str:
           const seriesItem = series.find((entry) => entry.name === item.seriesName);
           const rawValue = seriesItem?.values?.[index];
           const formattedValue = rawValue == null ? '—' : String(Math.round(rawValue));
-          return `{name|${escapeRichText(item.seriesName)}}{value|${escapeRichText(formattedValue)}}`;
+          const safeName = escapeRichText(item.seriesName);
+          const safeValue = escapeRichText(formattedValue);
+          return `{name|${safeName}}{value|${safeValue}}`;
         }).join('\n');
         return `{header|${escapeRichText(formatRuDate(axisValue))}}\n${rows}`;
       };
