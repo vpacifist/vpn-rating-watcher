@@ -656,7 +656,7 @@ def index() -> str:
               shadowBlur: 3
             },
             emphasis: {
-              focus: 'none'
+              focus: 'series'
             },
             blur: {
               lineStyle: { opacity: 0.2 },
