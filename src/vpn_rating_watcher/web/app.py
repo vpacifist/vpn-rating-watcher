@@ -339,7 +339,8 @@ def index() -> str:
       days: 30,
       topN: 10,
       mode: 'daily',
-      theme: 'light'
+      theme: 'light',
+      selectedSeriesName: null
     };
     const THEME_STORAGE_KEY = 'vrw-theme-preference';
     const systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
@@ -529,6 +530,49 @@ def index() -> str:
       }));
     }
 
+    function buildLatestValueMap(series) {
+      const latestValueMap = new Map();
+      series.forEach((item) => {
+        for (let index = item.values.length - 1; index >= 0; index -= 1) {
+          const value = item.values[index];
+          if (value != null) {
+            latestValueMap.set(item.name, value);
+            return;
+          }
+        }
+        latestValueMap.set(item.name, Number.POSITIVE_INFINITY);
+      });
+      return latestValueMap;
+    }
+
+    function buildTooltipFormatter(series, latestValueMap) {
+      return (params) => {
+        if (!Array.isArray(params) || params.length === 0) {
+          return '';
+        }
+        const axisValue = params[0].axisValue;
+        const index = params[0].dataIndex;
+        const sorted = [...params].sort((a, b) => {
+          const aValue = latestValueMap.get(a.seriesName) ?? Number.POSITIVE_INFINITY;
+          const bValue = latestValueMap.get(b.seriesName) ?? Number.POSITIVE_INFINITY;
+          if (aValue !== bValue) {
+            return aValue - bValue;
+          }
+          return a.seriesName.localeCompare(b.seriesName);
+        });
+        const rows = sorted.map((item) => {
+          const seriesItem = series.find((entry) => entry.name === item.seriesName);
+          const rawValue = seriesItem?.values?.[index];
+          const formattedValue = rawValue == null ? '—' : String(Math.round(rawValue));
+          return `<tr><td>${item.marker}${item.seriesName}</td><td style="text-align:right;"><strong>${formattedValue}</strong></td></tr>`;
+        }).join('');
+        return (
+          `<div><strong>${formatRuDate(axisValue)}</strong></div>` +
+          `<table style="margin-top:6px; min-width:220px;"><tbody>${rows}</tbody></table>`
+        );
+      };
+    }
+
     async function loadChart() {
       try {
         const isMobile = window.matchMedia('(max-width: 768px)').matches;
@@ -546,6 +590,7 @@ def index() -> str:
           return;
         }
         const spreadSeries = spreadOverlappingSeries(payload.series);
+        const latestValueMap = buildLatestValueMap(payload.series);
         const chartTheme = buildChartTheme();
 
         const option = {
@@ -554,7 +599,8 @@ def index() -> str:
             trigger: 'axis',
             backgroundColor: chartTheme.labelBackground,
             borderColor: chartTheme.labelStroke,
-            textStyle: { color: chartTheme.textColor }
+            textStyle: { color: chartTheme.textColor },
+            formatter: buildTooltipFormatter(payload.series, latestValueMap)
           },
           legend: { show: false },
           grid: {
@@ -617,22 +663,43 @@ def index() -> str:
               shadowBlur: 3
             },
             emphasis: {
-              focus: 'none',
-              lineStyle: {
-                width: window.devicePixelRatio >= 2 ? 3.2 : 3.6
-              }
+              focus: 'none'
             },
             blur: {
-              lineStyle: { opacity: 1 },
-              itemStyle: { opacity: 1 },
-              label: { opacity: 1 },
-              endLabel: { opacity: 1 }
+              lineStyle: { opacity: 0.2 },
+              itemStyle: { opacity: 0.2 },
+              label: { opacity: 0.2 },
+              endLabel: { opacity: 0.2 }
             },
             color: resolveSeriesColor(item),
             data: item.plotValues
           }))
         };
         chart.setOption(option, true);
+        chart.off('click');
+        chart.getZr().off('click');
+        chart.on('click', (params) => {
+          if (state.selectedSeriesName) {
+            state.selectedSeriesName = null;
+            chart.dispatchAction({ type: 'downplay', seriesIndex: 'all' });
+            return;
+          }
+          if (params?.componentType === 'series' && params.seriesName) {
+            state.selectedSeriesName = params.seriesName;
+            const selectedIndex = spreadSeries.findIndex((item) => item.name === params.seriesName);
+            chart.dispatchAction({ type: 'downplay', seriesIndex: 'all' });
+            if (selectedIndex >= 0) {
+              chart.dispatchAction({ type: 'highlight', seriesIndex: selectedIndex });
+            }
+          }
+        });
+        chart.getZr().on('click', (event) => {
+          if (!state.selectedSeriesName || event.target) {
+            return;
+          }
+          state.selectedSeriesName = null;
+          chart.dispatchAction({ type: 'downplay', seriesIndex: 'all' });
+        });
 
         document.getElementById('meta').innerHTML =
           `${sourceHtml(payload.source_name)} · ` +
