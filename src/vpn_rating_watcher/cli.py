@@ -344,6 +344,7 @@ def post_daily() -> None:
                 "active_chat_count": result.active_chat_count,
                 "posted_count": result.posted_count,
                 "skipped_count": result.skipped_count,
+                "failed_count": result.failed_count,
             },
             ensure_ascii=False,
             indent=2,

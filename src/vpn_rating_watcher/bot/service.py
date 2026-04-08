@@ -122,6 +122,7 @@ def upsert_telegram_chat(
     chat_id: str,
     chat_type: str | None,
     title: str | None,
+    is_active: bool = True,
 ) -> TelegramChat:
     stmt: Select[tuple[TelegramChat]] = select(TelegramChat).where(
         TelegramChat.chat_id == chat_id
@@ -130,7 +131,7 @@ def upsert_telegram_chat(
     if existing:
         existing.chat_type = chat_type
         existing.title = title
-        existing.is_active = True
+        existing.is_active = is_active
         session.commit()
         session.refresh(existing)
         return existing
@@ -139,7 +140,7 @@ def upsert_telegram_chat(
         chat_id=chat_id,
         chat_type=chat_type,
         title=title,
-        is_active=True,
+        is_active=is_active,
     )
     session.add(chat)
     session.commit()
@@ -331,6 +332,7 @@ class TelegramBotService:
         chat_id: str,
         chat_type: str | None,
         title: str | None,
+        is_active: bool = True,
     ) -> None:
         with self._session_factory() as session:
             upsert_telegram_chat(
@@ -338,7 +340,32 @@ class TelegramBotService:
                 chat_id=chat_id,
                 chat_type=chat_type,
                 title=title,
+                is_active=is_active,
             )
+
+    def set_chat_subscription(
+        self,
+        *,
+        chat_id: str,
+        chat_type: str | None,
+        title: str | None,
+        is_active: bool,
+    ) -> None:
+        with self._session_factory() as session:
+            upsert_telegram_chat(
+                session=session,
+                chat_id=chat_id,
+                chat_type=chat_type,
+                title=title,
+                is_active=is_active,
+            )
+
+    def is_chat_subscribed(self, *, chat_id: str) -> bool:
+        with self._session_factory() as session:
+            chat = session.execute(
+                select(TelegramChat).where(TelegramChat.chat_id == chat_id)
+            ).scalar_one_or_none()
+            return bool(chat and chat.is_active)
 
     def load_today_or_latest_chart(
         self, *, mode: str = CHART_MODE_DAILY

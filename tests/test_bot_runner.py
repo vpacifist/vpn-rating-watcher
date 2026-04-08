@@ -14,6 +14,8 @@ def test_commands_text_mentions_web_when_configured() -> None:
     text = _commands_text(web_app_url="https://example.com")
     assert "/web - Open interactive chart page" in text
     assert "/chart_median - Send latest chart (median 3d)" in text
+    assert "/subscribe_here - Subscribe current chat to daily chart" in text
+    assert "/status - Show current chat subscription status" in text
 
 
 def test_commands_text_mentions_missing_web_when_not_configured() -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from aiogram import Bot, Dispatcher, Router
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (
     FSInputFile,
@@ -22,6 +23,9 @@ def _commands_text(*, web_app_url: str | None) -> str:
         "/chart - Send latest chart\n"
         "/chart_median - Send latest chart (median 3d)\n"
         "/last - Show latest snapshot summary\n"
+        "/subscribe_here - Subscribe current chat to daily chart\n"
+        "/unsubscribe_here - Unsubscribe current chat from daily chart\n"
+        "/status - Show current chat subscription status\n"
         f"{web_command}\n"
         "/help - Show this help"
     )
@@ -62,10 +66,18 @@ def build_router(service: TelegramBotService, *, web_app_url: str | None = None)
     web_markup = _web_link_markup(normalized_web_app_url)
 
     async def _remember_chat(message: Message) -> None:
+        should_be_active = message.chat.type == "private"
         service.upsert_chat(
             chat_id=str(message.chat.id),
             chat_type=message.chat.type,
             title=_chat_title(message),
+            is_active=should_be_active,
+        )
+
+    async def _send_permission_error(message: Message) -> None:
+        await message.answer(
+            "Не удалось отправить сообщение в этот чат. "
+            "Проверьте, что боту разрешено писать сообщения и отключен режим только для админов."
         )
 
     @local_router.message(CommandStart())
@@ -159,6 +171,41 @@ def build_router(service: TelegramBotService, *, web_app_url: str | None = None)
             f"Интерактивный график: {normalized_web_app_url}",
             reply_markup=web_markup,
         )
+
+    @local_router.message(Command("subscribe_here"))
+    async def subscribe_here_handler(message: Message) -> None:
+        try:
+            service.set_chat_subscription(
+                chat_id=str(message.chat.id),
+                chat_type=message.chat.type,
+                title=_chat_title(message),
+                is_active=True,
+            )
+            await message.answer("✅ Этот чат подписан на daily chart.")
+        except (TelegramForbiddenError, TelegramBadRequest):
+            await _send_permission_error(message)
+
+    @local_router.message(Command("unsubscribe_here"))
+    async def unsubscribe_here_handler(message: Message) -> None:
+        service.set_chat_subscription(
+            chat_id=str(message.chat.id),
+            chat_type=message.chat.type,
+            title=_chat_title(message),
+            is_active=False,
+        )
+        await message.answer("🛑 Этот чат отписан от daily chart.")
+
+    @local_router.message(Command("status"))
+    async def status_handler(message: Message) -> None:
+        service.upsert_chat(
+            chat_id=str(message.chat.id),
+            chat_type=message.chat.type,
+            title=_chat_title(message),
+            is_active=message.chat.type == "private",
+        )
+        is_subscribed = service.is_chat_subscribed(chat_id=str(message.chat.id))
+        status_text = "подписан" if is_subscribed else "не подписан"
+        await message.answer(f"Статус текущего чата: {status_text}.")
 
     return local_router
 

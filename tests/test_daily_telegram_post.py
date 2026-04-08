@@ -76,7 +76,9 @@ def test_post_daily_is_idempotent_for_same_day(tmp_path: Path) -> None:
     )
 
     assert first.posted_count == 1
+    assert first.failed_count == 0
     assert second.posted_count == 0
+    assert second.failed_count == 0
     assert sends == ["1001"]
 
 
@@ -119,6 +121,7 @@ def test_post_daily_skips_inactive_chats(tmp_path: Path) -> None:
     )
 
     assert result.posted_count == 1
+    assert result.failed_count == 0
     assert result.active_chat_count == 1
     assert sends == ["1001"]
 
@@ -148,6 +151,7 @@ def test_post_daily_exits_cleanly_when_today_chart_missing() -> None:
 
     assert result.status == "no_chart"
     assert result.posted_count == 0
+    assert result.failed_count == 0
     assert sends == []
     assert [chat.chat_id for chat in chats] == ["1001", "1002"]
     assert all(chat.last_posted_date is None for chat in chats)
@@ -217,5 +221,56 @@ def test_post_daily_regenerates_chart_when_file_missing_on_disk() -> None:
 
     assert result.status == "ok"
     assert result.posted_count == 1
+    assert result.failed_count == 0
     assert len(sends) == 1
     assert not sends[0].exists()
+
+
+def test_post_daily_disables_chat_when_send_forbidden(tmp_path: Path) -> None:
+    from aiogram.exceptions import TelegramForbiddenError
+
+    session_factory = _session_factory()
+    chart_path = tmp_path / "chart.png"
+    chart_path.write_bytes(b"png")
+
+    with session_factory() as session:
+        session.add(
+            GeneratedChart(
+                chart_date=date(2026, 3, 29),
+                chart_type=LINE_CHART_TYPE,
+                source_name="maximkatz",
+                range_start_date=date(2026, 3, 29),
+                range_end_date=date(2026, 3, 29),
+                range_days=1,
+                file_path=str(chart_path),
+            )
+        )
+        session.add(
+            TelegramChat(chat_id="-10042", chat_type="supergroup", title="VPN", is_active=True)
+        )
+        session.commit()
+
+    async def _fake_send(**kwargs: str) -> None:
+        raise TelegramForbiddenError(
+            method="sendPhoto",
+            message=f"chat {kwargs['chat_id']} blocked",
+        )
+
+    result = run_daily_posting_job(
+        session_factory=session_factory,
+        token="test-token",
+        default_chat_ids_raw=None,
+        today=date(2026, 3, 29),
+        send_chart_func=_fake_send,
+    )
+
+    assert result.status == "ok"
+    assert result.posted_count == 0
+    assert result.failed_count == 1
+    assert "cannot send messages" in result.message
+
+    with session_factory() as session:
+        chat = session.execute(
+            select(TelegramChat).where(TelegramChat.chat_id == "-10042")
+        ).scalar_one()
+    assert chat.is_active is False
