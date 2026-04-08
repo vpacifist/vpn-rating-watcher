@@ -129,6 +129,8 @@ def index() -> str:
       background: var(--bg);
       color: var(--text);
       padding: 12px;
+      overflow-y: auto;
+      scrollbar-gutter: stable;
     }
     .wrap {
       max-width: 1200px;
@@ -590,6 +592,8 @@ def index() -> str:
           backgroundColor: 'transparent',
           tooltip: {
             trigger: 'axis',
+            confine: true,
+            transitionDuration: 0,
             backgroundColor: chartTheme.labelBackground,
             borderColor: chartTheme.labelStroke,
             textStyle: { color: chartTheme.textColor },
@@ -656,7 +660,11 @@ def index() -> str:
               shadowBlur: 3
             },
             emphasis: {
-              focus: 'series'
+              focus: 'series',
+              lineStyle: {
+                width: window.devicePixelRatio >= 2 ? 2.6 : 3,
+                shadowBlur: 0
+              }
             },
             blur: {
               lineStyle: { opacity: 0.2 },
