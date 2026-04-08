@@ -144,23 +144,26 @@ def index() -> str:
       color: #09101f;
       font-weight: 600;
     }
-    .icon-button {
+    .screenshot-button {
       display: inline-flex;
       align-items: center;
-      justify-content: center;
-      width: 38px;
-      height: 38px;
+      gap: 8px;
+      padding: 0 12px;
+      min-height: 38px;
       border-radius: 8px;
       border: 1px solid #2c3348;
       background: #10131d;
       color: var(--text);
       cursor: pointer;
       transition: background 0.15s ease-in-out;
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: lowercase;
     }
-    .icon-button:hover {
+    .screenshot-button:hover {
       background: #1a2030;
     }
-    .icon-button svg {
+    .screenshot-button svg {
       width: 18px;
       height: 18px;
       display: block;
@@ -211,11 +214,23 @@ def index() -> str:
         <div class='toolbar-spacer'></div>
         <button
           id='saveChartButton'
-          class='icon-button'
+          class='screenshot-button'
           type='button'
           aria-label='Сохранить скриншот графика'
           title='Сохранить скриншот'
-        >📸</button>
+        >
+          <span>скриншот</span>
+          <svg viewBox='0 0 24 24' aria-hidden='true'>
+            <path
+              d='M12 3v12m0 0 4-4m-4 4-4-4M5 14v3a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-3'
+              fill='none'
+              stroke='#ffffff'
+              stroke-width='2.2'
+              stroke-linecap='round'
+              stroke-linejoin='round'
+            />
+          </svg>
+        </button>
       </div>
       <div id='chart'></div>
       <div class='meta' id='meta'>Загрузка...</div>
