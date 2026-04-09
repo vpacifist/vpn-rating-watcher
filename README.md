@@ -19,7 +19,7 @@
 ```bash
 python3.12 -m venv .venv
 source .venv/bin/activate
-pip install -e '.[dev]'
+pip install -e .
 playwright install chromium
 cp .env.example .env
 ```
@@ -170,17 +170,6 @@ vrw sync-hourly
 - `vpn_snapshot_result`
 - `generated_chart`
 - `telegram_chat`
-
-## CI
-
-GitHub Actions запускается на каждый `push` и `pull_request`:
-- Python 3.12
-- `pip install -e '.[dev]'`
-- `python -m playwright install --with-deps chromium`
-- `ruff check .`
-- `pytest`
-
-Smoke-тест скрапера в CI детерминированный: используется статический HTML через Playwright `page.set_content(...)`, а не live-сайт.
 
 ## Деплой в Railway
 
