@@ -14,6 +14,13 @@ def build_dates(start_date: date, end_date: date) -> list[date]:
     return days
 
 
+def _should_include_series(values: list[int | None], color: str | None) -> bool:
+    point_count = sum(value is not None for value in values)
+    if point_count >= 2:
+        return True
+    return color is not None
+
+
 def build_chart_payload(
     *,
     rows: list[DailyScoreRow],
@@ -35,22 +42,26 @@ def build_chart_payload(
         vpn_points = points_by_vpn.setdefault(row.vpn_name, {})
         vpn_points[row.point_date] = row.score
 
-    ordered_vpns = sorted(
+    series = []
+    for vpn_name in sorted(
         points_by_vpn,
-        key=lambda vpn_name: points_by_vpn[vpn_name].get(days[-1], -1),
+        key=lambda name: points_by_vpn[name].get(days[-1], -1),
         reverse=True,
-    )
-    if top_n is not None:
-        ordered_vpns = ordered_vpns[:top_n]
+    ):
+        values = [points_by_vpn[vpn_name].get(day) for day in days]
+        color = color_for_vpn(vpn_name)
+        if not _should_include_series(values=values, color=color):
+            continue
+        series.append(
+            {
+                "name": vpn_name,
+                "values": values,
+                "color": color,
+            }
+        )
 
-    series = [
-        {
-            "name": vpn_name,
-            "values": [points_by_vpn[vpn_name].get(day) for day in days],
-            "color": color_for_vpn(vpn_name),
-        }
-        for vpn_name in ordered_vpns
-    ]
+    if top_n is not None:
+        series = series[:top_n]
 
     return {
         "source_name": source_name,
