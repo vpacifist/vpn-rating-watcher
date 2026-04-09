@@ -81,7 +81,9 @@ def index() -> str:
       const systemThemeMedia = typeof window.matchMedia === 'function'
         ? window.matchMedia('(prefers-color-scheme: dark)')
         : null;
-      const hasSystemThemePreference = Boolean(systemThemeMedia && systemThemeMedia.media !== 'not all');
+      const hasSystemThemePreference = Boolean(
+        systemThemeMedia && systemThemeMedia.media !== 'not all'
+      );
       const initialTheme = hasSystemThemePreference
         ? (systemThemeMedia.matches ? 'dark' : 'light')
         : 'dark';
@@ -375,7 +377,9 @@ def index() -> str:
     const systemThemeMedia = typeof window.matchMedia === 'function'
       ? window.matchMedia('(prefers-color-scheme: dark)')
       : null;
-    const hasSystemThemePreference = Boolean(systemThemeMedia && systemThemeMedia.media !== 'not all');
+    const hasSystemThemePreference = Boolean(
+      systemThemeMedia && systemThemeMedia.media !== 'not all'
+    );
 
     function setupSegmentedButtons(containerId, valueAttribute, stateKey) {
       const container = document.getElementById(containerId);
@@ -419,7 +423,11 @@ def index() -> str:
       if (hasSystemThemePreference) {
         return 'system';
       }
-      return storedPreference === 'light' || storedPreference === 'dark' ? storedPreference : 'dark';
+      return (
+        storedPreference === 'light' || storedPreference === 'dark'
+          ? storedPreference
+          : 'dark'
+      );
     }
 
     function resolveActiveTheme(preference) {
@@ -430,7 +438,10 @@ def index() -> str:
     }
 
     function applyTheme(preference, shouldReloadChart = true) {
-      const normalizedPreference = preference === 'system' && !hasSystemThemePreference ? 'dark' : preference;
+      const normalizedPreference =
+        preference === 'system' && !hasSystemThemePreference
+          ? 'dark'
+          : preference;
       state.theme = normalizedPreference;
       localStorage.setItem(THEME_STORAGE_KEY, normalizedPreference);
       const activeTheme = resolveActiveTheme(normalizedPreference);
