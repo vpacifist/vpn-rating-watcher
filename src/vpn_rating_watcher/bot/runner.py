@@ -21,7 +21,7 @@ from vpn_rating_watcher.charts.service import (
 
 
 def _command_entries(*, web_app_url: str | None) -> list[tuple[str, str]]:
-    web_description = "Open interactive chart page" if web_app_url else "Web app not configured"
+    web_description = "Open interactive chart page" if web_app_url else "Not configured"
     return [
         ("start", "Show bot intro and command list"),
         ("help", "Show full command list"),
@@ -31,7 +31,7 @@ def _command_entries(*, web_app_url: str | None) -> list[tuple[str, str]]:
         ("theme_dark", "Use dark PNG theme in this chat"),
         ("theme_light", "Use light PNG theme in this chat"),
         ("last", "Show latest snapshot summary"),
-        ("subscribe_here", "Subscribe this chat to daily chart"),
+        ("subscribe_here", "Subscribe current chat to daily chart"),
         ("unsubscribe_here", "Unsubscribe this chat from daily chart"),
         ("status", "Show current chat subscription status"),
         ("web", web_description),
