@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from vpn_rating_watcher.charts.service import (
     CHART_MODE_MEDIAN_3D,
     ChartRegenerationMetadata,
+    ChartSeries,
     DailyScoreRow,
     _apply_rolling_median_3d,
     _compute_label_positions,
@@ -22,6 +23,7 @@ from vpn_rating_watcher.charts.service import (
     query_chart_scores,
     query_daily_aggregated_scores,
     regenerate_chart_to_temp_file,
+    select_chart_series,
 )
 from vpn_rating_watcher.db.base import Base
 from vpn_rating_watcher.db.models import Snapshot, Vpn, VpnSnapshotResult
@@ -724,6 +726,23 @@ def test_matrix_from_rows_keeps_missing_dates_as_gaps() -> None:
     assert matrix[vpn_a_idx, 0] == 30
     assert np.isnan(matrix[vpn_a_idx, 1])
     assert matrix[vpn_a_idx, 2] == 31
+
+
+def test_select_chart_series_skips_uncolored_single_point_series_before_top_n() -> None:
+    dates = [date(2026, 3, 1), date(2026, 3, 2)]
+    rows = [
+        DailyScoreRow(vpn_name="VPN Liberty", point_date=date(2026, 3, 2), score=30),
+        DailyScoreRow(vpn_name="plusone vpn", point_date=date(2026, 3, 2), score=31),
+        DailyScoreRow(vpn_name="VPN A", point_date=date(2026, 3, 1), score=20),
+        DailyScoreRow(vpn_name="VPN A", point_date=date(2026, 3, 2), score=21),
+    ]
+
+    series = select_chart_series(rows=rows, dates=dates, top_n=2)
+
+    assert series == [
+        ChartSeries(name="VPN Liberty", values=[None, 30], color="#ba0300"),
+        ChartSeries(name="VPN A", values=[20, 21], color=None),
+    ]
 
 
 def test_compute_label_positions_preserves_order_and_spacing() -> None:

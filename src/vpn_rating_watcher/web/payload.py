@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from vpn_rating_watcher.charts.service import DailyScoreRow, color_for_vpn
+from vpn_rating_watcher.charts.service import DailyScoreRow, select_chart_series
 
 
 def build_dates(start_date: date, end_date: date) -> list[date]:
@@ -12,14 +12,6 @@ def build_dates(start_date: date, end_date: date) -> list[date]:
         days.append(current)
         current = date.fromordinal(current.toordinal() + 1)
     return days
-
-
-def _should_include_series(values: list[int | None], color: str | None) -> bool:
-    point_count = sum(value is not None for value in values)
-    if point_count >= 2:
-        return True
-    return color is not None
-
 
 def build_chart_payload(
     *,
@@ -37,31 +29,15 @@ def build_chart_payload(
     days = build_dates(start_date=start_date, end_date=end_date)
     labels = [day.isoformat() for day in days]
 
-    points_by_vpn: dict[str, dict[date, int]] = {}
-    for row in rows:
-        vpn_points = points_by_vpn.setdefault(row.vpn_name, {})
-        vpn_points[row.point_date] = row.score
-
-    series = []
-    for vpn_name in sorted(
-        points_by_vpn,
-        key=lambda name: points_by_vpn[name].get(days[-1], -1),
-        reverse=True,
-    ):
-        values = [points_by_vpn[vpn_name].get(day) for day in days]
-        color = color_for_vpn(vpn_name)
-        if not _should_include_series(values=values, color=color):
-            continue
-        series.append(
-            {
-                "name": vpn_name,
-                "values": values,
-                "color": color,
-            }
-        )
-
-    if top_n is not None:
-        series = series[:top_n]
+    selected_series = select_chart_series(rows=rows, dates=days, top_n=top_n)
+    series = [
+        {
+            "name": item.name,
+            "values": item.values,
+            "color": item.color,
+        }
+        for item in selected_series
+    ]
 
     return {
         "source_name": source_name,

@@ -47,6 +47,13 @@ class DailyScoreRow:
 
 
 @dataclass(slots=True)
+class ChartSeries:
+    name: str
+    values: list[float | None]
+    color: str | None
+
+
+@dataclass(slots=True)
 class DateRange:
     start_date: date
     end_date: date
@@ -299,6 +306,42 @@ def _build_dates(start_date: date, end_date: date) -> list[date]:
     return dates
 
 
+def _should_include_series(values: list[float | None], color: str | None) -> bool:
+    point_count = sum(value is not None for value in values)
+    return point_count >= 2 or color is not None
+
+
+def select_chart_series(
+    *,
+    rows: list[DailyScoreRow],
+    dates: list[date],
+    top_n: int | None,
+) -> list[ChartSeries]:
+    if top_n is not None and top_n <= 0:
+        raise ValueError("--top-n must be greater than zero")
+
+    points_by_vpn: dict[str, dict[date, float]] = {}
+    for row in rows:
+        vpn_points = points_by_vpn.setdefault(row.vpn_name, {})
+        vpn_points[row.point_date] = row.score
+
+    series: list[ChartSeries] = []
+    for vpn_name in sorted(
+        points_by_vpn,
+        key=lambda name: points_by_vpn[name].get(dates[-1], -1),
+        reverse=True,
+    ):
+        values = [points_by_vpn[vpn_name].get(day) for day in dates]
+        color = color_for_vpn(vpn_name)
+        if not _should_include_series(values=values, color=color):
+            continue
+        series.append(ChartSeries(name=vpn_name, values=values, color=color))
+
+    if top_n is not None:
+        return series[:top_n]
+    return series
+
+
 def _output_path(output: str | None, source_name: str, start_date: date, end_date: date) -> Path:
     if output:
         path = Path(output)
@@ -314,27 +357,14 @@ def _matrix_from_rows(
     dates: list[date],
     top_n: int | None,
 ) -> tuple[np.ndarray, list[str]]:
-    if top_n is not None and top_n <= 0:
-        raise ValueError("--top-n must be greater than zero")
-
-    date_to_idx = {day: idx for idx, day in enumerate(dates)}
-    latest_score: dict[str, float] = {}
-    for row in rows:
-        latest_score[row.vpn_name] = row.score
-
-    vpn_names = sorted(latest_score, key=lambda name: latest_score[name], reverse=True)
-    if top_n is not None:
-        vpn_names = vpn_names[:top_n]
-
-    vpn_to_idx = {name: idx for idx, name in enumerate(vpn_names)}
+    selected_series = select_chart_series(rows=rows, dates=dates, top_n=top_n)
+    vpn_names = [series.name for series in selected_series]
     matrix = np.full((len(vpn_names), len(dates)), np.nan)
 
-    for row in rows:
-        vpn_idx = vpn_to_idx.get(row.vpn_name)
-        date_idx = date_to_idx.get(row.point_date)
-        if vpn_idx is None or date_idx is None:
-            continue
-        matrix[vpn_idx, date_idx] = row.score
+    for vpn_idx, series in enumerate(selected_series):
+        for date_idx, value in enumerate(series.values):
+            if value is not None:
+                matrix[vpn_idx, date_idx] = value
 
     return matrix, vpn_names
 
