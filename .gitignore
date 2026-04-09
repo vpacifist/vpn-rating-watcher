@@ -6,3 +6,9 @@ __pycache__/
 .coverage
 .env
 *.png
+.mplconfig/
+.playwright-cli/
+.tmp/
+.tmp_test_probe/
+.tmp_testdata/
+artifacts/
