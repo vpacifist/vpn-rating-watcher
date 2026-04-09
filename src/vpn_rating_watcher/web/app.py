@@ -671,17 +671,46 @@ def index() -> str:
             item.color || resolveSeriesColor(seriesItem || {}) || cssVar('--accent')
           );
           const formattedValue = rawValue == null ? '&mdash;' : escapeHtml(Math.round(rawValue));
+          const markerStyle = [
+            'width:8px',
+            'height:8px',
+            'border-radius:999px',
+            'flex:0 0 8px',
+            `background:${markerColor}`,
+          ].join(';');
+          const nameStyle = [
+            'flex:1 1 auto',
+            'min-width:0',
+            'overflow:hidden',
+            'text-overflow:ellipsis',
+            'white-space:nowrap',
+            `color:${cssVar('--text')}`,
+          ].join(';');
+          const valueStyle = [
+            'flex:0 0 auto',
+            'margin-left:12px',
+            'font-weight:700',
+            `color:${cssVar('--text')}`,
+            'text-align:right',
+          ].join(';');
           return (
             "<div style='display:flex;align-items:center;gap:10px;min-width:0;'>" +
-              `<span style='width:8px;height:8px;border-radius:999px;flex:0 0 8px;background:${markerColor};'></span>` +
-              `<span style='flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${cssVar('--text')};'>${escapeHtml(item.seriesName)}</span>` +
-              `<span style='flex:0 0 auto;margin-left:12px;font-weight:700;color:${cssVar('--text')};text-align:right;'>${formattedValue}</span>` +
+              `<span style='${markerStyle}'></span>` +
+              `<span style='${nameStyle}'>${escapeHtml(item.seriesName)}</span>` +
+              `<span style='${valueStyle}'>${formattedValue}</span>` +
             "</div>"
           );
         }).join("<div style='height:8px;'></div>");
+        const headerStyle = [
+          'font-size:12px',
+          'font-weight:700',
+          'line-height:1.35',
+          'margin-bottom:10px',
+          `color:${cssVar('--text')}`,
+        ].join(';');
         return (
           "<div style='min-width:200px;max-width:260px;padding:12px 14px;'>" +
-            `<div style='font-size:12px;font-weight:700;line-height:1.35;margin-bottom:10px;color:${cssVar('--text')};'>${escapeHtml(formatRuDate(axisValue))}</div>` +
+            `<div style='${headerStyle}'>${escapeHtml(formatRuDate(axisValue))}</div>` +
             `<div style='display:flex;flex-direction:column;'>${rows}</div>` +
           "</div>"
         );
