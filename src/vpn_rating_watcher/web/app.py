@@ -636,6 +636,58 @@ def index() -> str:
       };
     }
 
+    function buildHtmlTooltipFormatter(series) {
+      const escapeHtml = (value) => String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+      const seriesByName = new Map(series.map((item) => [item.name, item]));
+
+      return (params) => {
+        if (!Array.isArray(params) || params.length === 0) {
+          return '';
+        }
+        const axisValue = params[0].axisValue;
+        const index = params[0].dataIndex;
+        const sorted = [...params].sort((a, b) => {
+          const aSeriesItem = seriesByName.get(a.seriesName);
+          const bSeriesItem = seriesByName.get(b.seriesName);
+          const aRawValue = aSeriesItem?.values?.[index];
+          const bRawValue = bSeriesItem?.values?.[index];
+          const aValue = aRawValue == null ? Number.NEGATIVE_INFINITY : aRawValue;
+          const bValue = bRawValue == null ? Number.NEGATIVE_INFINITY : bRawValue;
+          if (aValue !== bValue) {
+            return bValue - aValue;
+          }
+          return a.seriesName.localeCompare(b.seriesName);
+        });
+        const rows = sorted.map((item) => {
+          const seriesItem = seriesByName.get(item.seriesName);
+          const rawValue = seriesItem?.values?.[index];
+          const markerColor = escapeHtml(
+            item.color || resolveSeriesColor(seriesItem || {}) || cssVar('--accent')
+          );
+          const formattedValue = rawValue == null ? '&mdash;' : escapeHtml(Math.round(rawValue));
+          return (
+            "<div style='display:flex;align-items:center;gap:10px;min-width:0;'>" +
+              `<span style='width:8px;height:8px;border-radius:999px;flex:0 0 8px;background:${markerColor};'></span>` +
+              `<span style='flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${cssVar('--text')};'>${escapeHtml(item.seriesName)}</span>` +
+              `<span style='flex:0 0 auto;margin-left:12px;font-weight:700;color:${cssVar('--text')};text-align:right;'>${formattedValue}</span>` +
+            "</div>"
+          );
+        }).join("<div style='height:8px;'></div>");
+        return (
+          "<div style='min-width:200px;max-width:260px;padding:12px 14px;'>" +
+            `<div style='font-size:12px;font-weight:700;line-height:1.35;margin-bottom:10px;color:${cssVar('--text')};'>${escapeHtml(formatRuDate(axisValue))}</div>` +
+            `<div style='display:flex;flex-direction:column;'>${rows}</div>` +
+          "</div>"
+        );
+      };
+    }
+
     async function loadChart() {
       try {
         const isMobile = window.matchMedia('(max-width: 768px)').matches;
@@ -659,39 +711,26 @@ def index() -> str:
           backgroundColor: 'transparent',
           tooltip: {
             trigger: 'axis',
-            renderMode: 'richText',
+            renderMode: 'html',
             confine: true,
             transitionDuration: 0,
             backgroundColor: chartTheme.labelBackground,
-            borderColor: chartTheme.labelStroke,
+            borderColor: 'transparent',
+            borderWidth: 0,
             textStyle: {
               color: chartTheme.textColor,
               fontSize: 12,
-              lineHeight: 20
+              lineHeight: 18
             },
-            padding: [10, 12],
-            rich: {
-              header: {
-                fontWeight: 700,
-                color: chartTheme.textColor,
-                lineHeight: 22,
-                padding: [0, 0, 6, 0]
-              },
-              name: {
-                color: chartTheme.textColor,
-                width: 145,
-                lineHeight: 18,
-                padding: [0, 12, 0, 0]
-              },
-              value: {
-                color: chartTheme.textColor,
-                align: 'right',
-                fontWeight: 700,
-                width: 34,
-                lineHeight: 18
-              }
-            },
-            formatter: buildTooltipFormatter(payload.series)
+            padding: 0,
+            extraCssText: [
+              'border-radius:12px',
+              'box-shadow:0 12px 30px rgba(15, 23, 42, 0.18)',
+              'backdrop-filter:blur(10px)',
+              '-webkit-backdrop-filter:blur(10px)',
+              'overflow:hidden'
+            ].join(';'),
+            formatter: buildHtmlTooltipFormatter(payload.series)
           },
           legend: { show: false },
           grid: {
