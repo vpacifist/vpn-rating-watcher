@@ -4,6 +4,7 @@ from aiogram import Bot, Dispatcher, Router
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (
+    BotCommand,
     FSInputFile,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -19,22 +20,36 @@ from vpn_rating_watcher.charts.service import (
 )
 
 
+def _command_entries(*, web_app_url: str | None) -> list[tuple[str, str]]:
+    web_description = "Open interactive chart page" if web_app_url else "Web app not configured"
+    return [
+        ("start", "Show bot intro and command list"),
+        ("help", "Show full command list"),
+        ("today", "Send today's chart or latest available"),
+        ("chart", "Send latest chart"),
+        ("chart_median", "Send latest chart (median 3d)"),
+        ("theme_dark", "Use dark PNG theme in this chat"),
+        ("theme_light", "Use light PNG theme in this chat"),
+        ("last", "Show latest snapshot summary"),
+        ("subscribe_here", "Subscribe this chat to daily chart"),
+        ("unsubscribe_here", "Unsubscribe this chat from daily chart"),
+        ("status", "Show current chat subscription status"),
+        ("web", web_description),
+    ]
+
+
 def _commands_text(*, web_app_url: str | None) -> str:
-    web_command = "/web - Open interactive chart page" if web_app_url else "/web - Not configured"
     return (
         "Available commands:\n"
-        "/today - Send today's chart, or latest if today's is missing\n"
-        "/chart - Send latest chart\n"
-        "/chart_median - Send latest chart (median 3d)\n"
-        "/theme_dark - Use dark PNG theme in this chat\n"
-        "/theme_light - Use light PNG theme in this chat\n"
-        "/last - Show latest snapshot summary\n"
-        "/subscribe_here - Subscribe current chat to daily chart\n"
-        "/unsubscribe_here - Unsubscribe current chat from daily chart\n"
-        "/status - Show current chat subscription status\n"
-        f"{web_command}\n"
-        "/help - Show this help"
+        + "\n".join(f"/{name} - {description}" for name, description in _command_entries(web_app_url=web_app_url))
     )
+
+
+def _telegram_menu_commands(*, web_app_url: str | None) -> list[BotCommand]:
+    return [
+        BotCommand(command=name, description=description)
+        for name, description in _command_entries(web_app_url=web_app_url)
+    ]
 
 
 def _chat_title(message: Message) -> str | None:
@@ -256,4 +271,5 @@ async def run_polling(
     dp.include_router(build_router(service, web_app_url=web_app_url))
 
     bot = Bot(token=token)
+    await bot.set_my_commands(_telegram_menu_commands(web_app_url=web_app_url))
     await dp.start_polling(bot)
