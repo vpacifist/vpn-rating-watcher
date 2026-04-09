@@ -797,4 +797,5 @@ def test_regenerate_chart_to_temp_file_uses_metadata_range_and_source() -> None:
     assert query_rows.call_args.kwargs["start_date"] == date(2026, 3, 10)
     assert query_rows.call_args.kwargs["end_date"] == date(2026, 3, 15)
     render_chart.assert_called_once()
+    assert render_chart.call_args.kwargs["theme"] == "dark"
     output.unlink(missing_ok=True)

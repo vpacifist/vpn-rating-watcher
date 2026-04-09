@@ -14,10 +14,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from vpn_rating_watcher.bot.service import (
     _resolve_chart_path,
-    cleanup_temporary_chart_file,
     get_latest_chart_for_date,
     upsert_telegram_chat,
 )
+from vpn_rating_watcher.charts.service import CHART_THEME_DARK
 from vpn_rating_watcher.db.models import TelegramChat
 
 
@@ -110,23 +110,6 @@ def run_daily_posting_job(
                 active_chat_count=active_chat_count,
             )
 
-        original_chart_path = chart.file_path
-        chart_path, error = _resolve_chart_path(session=session, chart=chart)
-        if error:
-            active_chat_count = len(session.execute(_active_chats_query()).scalars().all())
-            return DailyPostingResult(
-                status="no_chart",
-                message=error,
-                chart_date=chart.chart_date,
-                posted_count=0,
-                skipped_count=0,
-                failed_count=0,
-                active_chat_count=active_chat_count,
-            )
-        assert chart_path is not None
-        chart.file_path = chart_path
-        chart.is_temporary = chart_path != original_chart_path
-
         active_chats = session.execute(_active_chats_query()).scalars().all()
         chart_date_label = (
             chart.chart_date.isoformat() if chart.chart_date else resolved_today.isoformat()
@@ -137,11 +120,35 @@ def run_daily_posting_job(
         skipped_count = 0
         failed_count = 0
         failed_chats: list[str] = []
+        themed_charts: dict[str, tuple[Path, bool]] = {}
         try:
             for chat in active_chats:
                 if chat.last_posted_date is not None and chat.last_posted_date >= resolved_today:
                     skipped_count += 1
                     continue
+
+                theme = chat.chart_theme or CHART_THEME_DARK
+                cached_chart = themed_charts.get(theme)
+                if cached_chart is None:
+                    chart_path, error = _resolve_chart_path(
+                        session=session,
+                        chart=chart,
+                        theme=theme,
+                    )
+                    if error:
+                        return DailyPostingResult(
+                            status="no_chart",
+                            message=error,
+                            chart_date=chart.chart_date,
+                            posted_count=posted_count,
+                            skipped_count=skipped_count,
+                            failed_count=failed_count,
+                            active_chat_count=len(active_chats),
+                        )
+                    assert chart_path is not None
+                    cached_chart = (chart_path, chart_path != chart.file_path)
+                    themed_charts[theme] = cached_chart
+                chart_path, _is_temporary = cached_chart
 
                 try:
                     asyncio.run(
@@ -163,7 +170,9 @@ def run_daily_posting_job(
                 session.commit()
                 posted_count += 1
         finally:
-            cleanup_temporary_chart_file(chart)
+            for theme_path, is_temporary in themed_charts.values():
+                if is_temporary:
+                    theme_path.unlink(missing_ok=True)
 
         message = "Daily posting finished."
         if failed_chats:

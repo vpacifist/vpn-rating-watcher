@@ -14,7 +14,12 @@ from vpn_rating_watcher.bot.service import (
     get_today_or_latest_chart,
     upsert_telegram_chat,
 )
-from vpn_rating_watcher.charts.service import CHART_MODE_MEDIAN_3D, LINE_CHART_TYPE
+from vpn_rating_watcher.charts.service import (
+    CHART_MODE_MEDIAN_3D,
+    CHART_THEME_DARK,
+    CHART_THEME_LIGHT,
+    LINE_CHART_TYPE,
+)
 from vpn_rating_watcher.db.base import Base
 from vpn_rating_watcher.db.models import (
     GeneratedChart,
@@ -45,6 +50,7 @@ def test_upsert_telegram_chat_creates_and_updates() -> None:
             chat_id="123",
             chat_type="group",
             title="VPN Chat",
+            chart_theme=CHART_THEME_LIGHT,
             is_active=False,
         )
 
@@ -53,7 +59,47 @@ def test_upsert_telegram_chat_creates_and_updates() -> None:
         assert rows[0].chat_id == "123"
         assert rows[0].chat_type == "group"
         assert rows[0].title == "VPN Chat"
+        assert rows[0].chart_theme == CHART_THEME_LIGHT
         assert rows[0].is_active is False
+
+
+def test_set_chat_theme_persists_theme_without_changing_subscription() -> None:
+    session_factory = _session_factory()
+    service = TelegramBotService(session_factory=session_factory)
+
+    service.set_chat_subscription(
+        chat_id="123",
+        chat_type="private",
+        title=None,
+        is_active=False,
+    )
+    service.set_chat_theme(
+        chat_id="123",
+        chat_type="private",
+        title=None,
+        chart_theme=CHART_THEME_LIGHT,
+    )
+
+    with session_factory() as session:
+        chat = session.execute(select(TelegramChat).where(TelegramChat.chat_id == "123")).scalar_one()
+        assert chat.chart_theme == CHART_THEME_LIGHT
+        assert chat.is_active is False
+
+
+def test_get_chat_theme_returns_none_or_saved_theme() -> None:
+    session_factory = _session_factory()
+    service = TelegramBotService(session_factory=session_factory)
+
+    assert service.get_chat_theme(chat_id="missing") is None
+
+    service.set_chat_theme(
+        chat_id="123",
+        chat_type="private",
+        title=None,
+        chart_theme=CHART_THEME_DARK,
+    )
+
+    assert service.get_chat_theme(chat_id="123") == CHART_THEME_DARK
 
 
 def test_chat_subscription_status_uses_current_active_flag() -> None:
@@ -404,3 +450,37 @@ def test_load_latest_chart_median_mode_always_uses_regeneration(tmp_path: Path) 
     assert chart.is_temporary is True
     assert regenerate.call_args is not None
     assert regenerate.call_args.kwargs["mode"] == CHART_MODE_MEDIAN_3D
+
+
+def test_load_latest_chart_light_theme_always_uses_regeneration(tmp_path: Path) -> None:
+    session_factory = _session_factory()
+    existing_file = tmp_path / "existing-dark.png"
+    existing_file.write_bytes(b"dark")
+    with session_factory() as session:
+        session.add(
+            GeneratedChart(
+                chart_date=date(2026, 3, 29),
+                chart_type=LINE_CHART_TYPE,
+                source_name="mixed",
+                range_start_date=date(2026, 3, 20),
+                range_end_date=date(2026, 3, 29),
+                range_days=10,
+                file_path=str(existing_file),
+            )
+        )
+        session.commit()
+
+    fake_output = tmp_path / "regenerated-light.png"
+    fake_output.write_bytes(b"png")
+    service = TelegramBotService(session_factory=session_factory)
+
+    with patch("vpn_rating_watcher.bot.service.regenerate_chart_to_temp_file") as regenerate:
+        regenerate.return_value = fake_output
+        chart, error = service.load_latest_chart(theme=CHART_THEME_LIGHT)
+
+    assert error is None
+    assert chart is not None
+    assert chart.file_path == fake_output
+    assert chart.is_temporary is True
+    assert regenerate.call_args is not None
+    assert regenerate.call_args.kwargs["theme"] == CHART_THEME_LIGHT

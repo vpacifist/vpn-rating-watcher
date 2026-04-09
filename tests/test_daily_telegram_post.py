@@ -5,8 +5,9 @@ from pathlib import Path
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
+from unittest.mock import patch
 
-from vpn_rating_watcher.charts.service import LINE_CHART_TYPE
+from vpn_rating_watcher.charts.service import CHART_THEME_LIGHT, LINE_CHART_TYPE
 from vpn_rating_watcher.db.base import Base
 from vpn_rating_watcher.db.models import (
     GeneratedChart,
@@ -224,6 +225,52 @@ def test_post_daily_regenerates_chart_when_file_missing_on_disk() -> None:
     assert result.failed_count == 0
     assert len(sends) == 1
     assert not sends[0].exists()
+
+
+def test_post_daily_uses_saved_chat_theme_for_regeneration(tmp_path: Path) -> None:
+    session_factory = _session_factory()
+    chart_path = tmp_path / "chart.png"
+    chart_path.write_bytes(b"png")
+
+    with session_factory() as session:
+        session.add(
+            GeneratedChart(
+                chart_date=date(2026, 3, 29),
+                chart_type=LINE_CHART_TYPE,
+                source_name="maximkatz",
+                range_start_date=date(2026, 3, 1),
+                range_end_date=date(2026, 3, 29),
+                range_days=29,
+                file_path=str(chart_path),
+            )
+        )
+        session.add(
+            TelegramChat(
+                chat_id="1001",
+                chat_type="private",
+                title=None,
+                chart_theme=CHART_THEME_LIGHT,
+                is_active=True,
+            )
+        )
+        session.commit()
+
+    async def _fake_send(**kwargs: str | Path) -> None:
+        return None
+
+    with patch("vpn_rating_watcher.jobs.daily_telegram_post._resolve_chart_path") as resolve:
+        resolve.return_value = (chart_path, None)
+        result = run_daily_posting_job(
+            session_factory=session_factory,
+            token="test-token",
+            default_chat_ids_raw=None,
+            today=date(2026, 3, 29),
+            send_chart_func=_fake_send,
+        )
+
+    assert result.status == "ok"
+    assert resolve.call_args is not None
+    assert resolve.call_args.kwargs["theme"] == CHART_THEME_LIGHT
 
 
 def test_post_daily_disables_chat_when_send_forbidden(tmp_path: Path) -> None:

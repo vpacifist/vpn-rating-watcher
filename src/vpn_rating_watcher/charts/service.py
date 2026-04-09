@@ -24,6 +24,9 @@ CARRY_FORWARD_MAX_DAYS = 3
 CHART_MODE_DAILY = "daily"
 CHART_MODE_MEDIAN_3D = "median_3d"
 CHART_MODES = (CHART_MODE_DAILY, CHART_MODE_MEDIAN_3D)
+CHART_THEME_DARK = "dark"
+CHART_THEME_LIGHT = "light"
+CHART_THEMES = (CHART_THEME_DARK, CHART_THEME_LIGHT)
 OVERLAP_SPREAD_STEP = 0.24
 
 VPN_LINE_COLORS: dict[str, str] = {
@@ -387,17 +390,27 @@ def _render_line_chart(
     dates: list[date],
     source_name: str,
     output_path: Path,
+    theme: str = CHART_THEME_DARK,
 ) -> None:
+    if theme not in CHART_THEMES:
+        raise ValueError(f"Unsupported chart theme: {theme}")
+
     width = max(10, len(dates) * 0.4)
     height = max(6, len(vpn_names) * 0.35)
 
+    is_dark = theme == CHART_THEME_DARK
+    background_color = "#0f111a" if is_dark else "#ffffff"
+    text_color = "white" if is_dark else "#17202a"
+    spine_color = "#7f8c8d" if is_dark else "#c7d0d9"
+    grid_color = "#3b3f4a" if is_dark else "#d5dce3"
+
     fig, ax = plt.subplots(figsize=(width, height), dpi=180)
-    fig.patch.set_facecolor("#0f111a")
-    ax.set_facecolor("#0f111a")
+    fig.patch.set_facecolor(background_color)
+    ax.set_facecolor(background_color)
 
     ax.set_xticks(np.arange(len(dates)))
     ax.set_xticklabels(
-        [day.isoformat() for day in dates], rotation=45, ha="right", color="white"
+        [day.isoformat() for day in dates], rotation=45, ha="right", color=text_color
     )
 
     x_values = np.arange(len(dates))
@@ -436,26 +449,26 @@ def _render_line_chart(
             )
         )
 
-    ax.set_xlabel("Date", color="white")
-    ax.set_ylabel("Score", color="white")
+    ax.set_xlabel("Date", color=text_color)
+    ax.set_ylabel("Score", color=text_color)
     ax.set_ylim(0, 37)
     ax.set_xlim(-0.5, max(0.0, float(len(dates) - 1)) + 2.5)
 
     generated_at = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     ax.set_title(
         f"VPN Historical Scores ({source_name})\nGenerated: {generated_at}",
-        color="white",
+        color=text_color,
         fontsize=12,
         pad=14,
     )
 
     for spine in ax.spines.values():
-        spine.set_color("#7f8c8d")
+        spine.set_color(spine_color)
 
     _add_end_labels(ax=ax, endpoints=endpoints)
 
-    ax.grid(True, color="#3b3f4a", alpha=0.4, linewidth=0.7)
-    ax.tick_params(colors="white")
+    ax.grid(True, color=grid_color, alpha=0.4, linewidth=0.7)
+    ax.tick_params(colors=text_color)
     fig.tight_layout()
     fig.savefig(output_path, facecolor=fig.get_facecolor(), bbox_inches="tight")
     plt.close(fig)
@@ -603,6 +616,7 @@ def generate_historical_line_chart(
     top_n: int | None = None,
     output: str | None = None,
     mode: str = CHART_MODE_DAILY,
+    theme: str = CHART_THEME_DARK,
 ) -> ChartGenerationResult:
     date_range = resolve_date_range(
         session=session,
@@ -638,6 +652,7 @@ def generate_historical_line_chart(
         dates=dates,
         source_name=source_name,
         output_path=output_path,
+        theme=theme,
     )
 
     chart = GeneratedChart(
@@ -686,6 +701,7 @@ def regenerate_chart_to_temp_file(
     *,
     metadata: ChartRegenerationMetadata,
     mode: str = CHART_MODE_DAILY,
+    theme: str = CHART_THEME_DARK,
 ) -> Path:
     if metadata.chart_type != LINE_CHART_TYPE:
         raise ValueError(f"Unsupported chart type for regeneration: {metadata.chart_type}")
@@ -734,5 +750,6 @@ def regenerate_chart_to_temp_file(
         dates=dates,
         source_name=source_name,
         output_path=Path(output_path),
+        theme=theme,
     )
     return Path(output_path)

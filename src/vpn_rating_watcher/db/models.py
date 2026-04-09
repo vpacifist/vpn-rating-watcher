@@ -98,6 +98,7 @@ class TelegramChat(Base):
     chat_id: Mapped[str] = mapped_column(String(100), nullable=False)
     chat_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    chart_theme: Mapped[str | None] = mapped_column(String(16), nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )

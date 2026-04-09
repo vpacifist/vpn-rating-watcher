@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from vpn_rating_watcher.charts.service import (
     CHART_MODE_DAILY,
+    CHART_THEME_DARK,
+    CHART_THEMES,
     LINE_CHART_TYPE,
     ChartRegenerationMetadata,
     regenerate_chart_to_temp_file,
@@ -122,8 +124,12 @@ def upsert_telegram_chat(
     chat_id: str,
     chat_type: str | None,
     title: str | None,
+    chart_theme: str | None = None,
     is_active: bool = True,
 ) -> TelegramChat:
+    if chart_theme is not None and chart_theme not in CHART_THEMES:
+        raise ValueError(f"Unsupported chart theme: {chart_theme}")
+
     stmt: Select[tuple[TelegramChat]] = select(TelegramChat).where(
         TelegramChat.chat_id == chat_id
     )
@@ -131,6 +137,8 @@ def upsert_telegram_chat(
     if existing:
         existing.chat_type = chat_type
         existing.title = title
+        if chart_theme is not None:
+            existing.chart_theme = chart_theme
         existing.is_active = is_active
         session.commit()
         session.refresh(existing)
@@ -140,6 +148,7 @@ def upsert_telegram_chat(
         chat_id=chat_id,
         chat_type=chat_type,
         title=title,
+        chart_theme=chart_theme,
         is_active=is_active,
     )
     session.add(chat)
@@ -340,6 +349,7 @@ class TelegramBotService:
                 chat_id=chat_id,
                 chat_type=chat_type,
                 title=title,
+                chart_theme=None,
                 is_active=is_active,
             )
 
@@ -357,6 +367,7 @@ class TelegramBotService:
                 chat_id=chat_id,
                 chat_type=chat_type,
                 title=title,
+                chart_theme=None,
                 is_active=is_active,
             )
 
@@ -367,15 +378,49 @@ class TelegramBotService:
             ).scalar_one_or_none()
             return bool(chat and chat.is_active)
 
+    def set_chat_theme(
+        self,
+        *,
+        chat_id: str,
+        chat_type: str | None,
+        title: str | None,
+        chart_theme: str,
+    ) -> None:
+        with self._session_factory() as session:
+            existing = session.execute(
+                select(TelegramChat).where(TelegramChat.chat_id == chat_id)
+            ).scalar_one_or_none()
+            is_active = existing.is_active if existing is not None else chat_type == "private"
+            upsert_telegram_chat(
+                session=session,
+                chat_id=chat_id,
+                chat_type=chat_type,
+                title=title,
+                chart_theme=chart_theme,
+                is_active=is_active,
+            )
+
+    def get_chat_theme(self, *, chat_id: str) -> str | None:
+        with self._session_factory() as session:
+            chat = session.execute(
+                select(TelegramChat).where(TelegramChat.chat_id == chat_id)
+            ).scalar_one_or_none()
+            return chat.chart_theme if chat is not None else None
+
     def load_today_or_latest_chart(
-        self, *, mode: str = CHART_MODE_DAILY
+        self, *, mode: str = CHART_MODE_DAILY, theme: str = CHART_THEME_DARK
     ) -> tuple[ChartLookupResult | None, str | None]:
         with self._session_factory() as session:
             chart = get_today_or_latest_chart(session=session)
             if chart is None:
                 return None, "No charts found yet. Run `vrw generate-chart` first."
             original_path = chart.file_path
-            chart_path, error = _resolve_chart_path(session=session, chart=chart, mode=mode)
+            chart_path, error = _resolve_chart_path(
+                session=session,
+                chart=chart,
+                mode=mode,
+                theme=theme,
+            )
 
         if error:
             return None, error
@@ -386,14 +431,19 @@ class TelegramBotService:
         return chart, None
 
     def load_latest_chart(
-        self, *, mode: str = CHART_MODE_DAILY
+        self, *, mode: str = CHART_MODE_DAILY, theme: str = CHART_THEME_DARK
     ) -> tuple[ChartLookupResult | None, str | None]:
         with self._session_factory() as session:
             chart = get_latest_chart(session=session)
             if chart is None:
                 return None, "No charts found yet. Run `vrw generate-chart` first."
             original_path = chart.file_path
-            chart_path, error = _resolve_chart_path(session=session, chart=chart, mode=mode)
+            chart_path, error = _resolve_chart_path(
+                session=session,
+                chart=chart,
+                mode=mode,
+                theme=theme,
+            )
 
         if error:
             return None, error
@@ -414,9 +464,13 @@ class TelegramBotService:
 
 
 def _resolve_chart_path(
-    *, session: Session, chart: ChartLookupResult, mode: str = CHART_MODE_DAILY
+    *,
+    session: Session,
+    chart: ChartLookupResult,
+    mode: str = CHART_MODE_DAILY,
+    theme: str = CHART_THEME_DARK,
 ) -> tuple[Path | None, str | None]:
-    if mode == CHART_MODE_DAILY and chart.file_path.exists():
+    if mode == CHART_MODE_DAILY and theme == CHART_THEME_DARK and chart.file_path.exists():
         return chart.file_path, None
 
     try:
@@ -432,6 +486,7 @@ def _resolve_chart_path(
                 file_path=chart.file_path,
             ),
             mode=mode,
+            theme=theme,
         )
     except ValueError as exc:
         return None, f"Failed to regenerate chart from DB data: {exc}"

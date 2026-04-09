@@ -12,7 +12,11 @@ from aiogram.types import (
 from sqlalchemy.orm import Session, sessionmaker
 
 from vpn_rating_watcher.bot.service import TelegramBotService, cleanup_temporary_chart_file
-from vpn_rating_watcher.charts.service import CHART_MODE_MEDIAN_3D
+from vpn_rating_watcher.charts.service import (
+    CHART_MODE_MEDIAN_3D,
+    CHART_THEME_DARK,
+    CHART_THEME_LIGHT,
+)
 
 
 def _commands_text(*, web_app_url: str | None) -> str:
@@ -22,6 +26,8 @@ def _commands_text(*, web_app_url: str | None) -> str:
         "/today - Send today's chart, or latest if today's is missing\n"
         "/chart - Send latest chart\n"
         "/chart_median - Send latest chart (median 3d)\n"
+        "/theme_dark - Use dark PNG theme in this chat\n"
+        "/theme_light - Use light PNG theme in this chat\n"
         "/last - Show latest snapshot summary\n"
         "/subscribe_here - Subscribe current chat to daily chart\n"
         "/unsubscribe_here - Unsubscribe current chat from daily chart\n"
@@ -60,6 +66,12 @@ def _web_link_markup(web_app_url: str | None) -> InlineKeyboardMarkup | None:
     )
 
 
+def _resolve_telegram_chart_theme(*, chat_type: str) -> str:
+    if chat_type in {"group", "supergroup", "channel"}:
+        return CHART_THEME_DARK
+    return CHART_THEME_DARK
+
+
 def build_router(service: TelegramBotService, *, web_app_url: str | None = None) -> Router:
     local_router = Router(name="vpn-rating-watcher-commands")
     normalized_web_app_url = _normalize_web_app_url(web_app_url)
@@ -72,6 +84,11 @@ def build_router(service: TelegramBotService, *, web_app_url: str | None = None)
             chat_type=message.chat.type,
             title=_chat_title(message),
             is_active=should_be_active,
+        )
+
+    def _effective_chart_theme(message: Message) -> str:
+        return service.get_chat_theme(chat_id=str(message.chat.id)) or _resolve_telegram_chart_theme(
+            chat_type=message.chat.type
         )
 
     async def _send_permission_error(message: Message) -> None:
@@ -99,7 +116,7 @@ def build_router(service: TelegramBotService, *, web_app_url: str | None = None)
     @local_router.message(Command("today"))
     async def today_handler(message: Message) -> None:
         await _remember_chat(message)
-        chart, error = service.load_today_or_latest_chart()
+        chart, error = service.load_today_or_latest_chart(theme=_effective_chart_theme(message))
         if error:
             await message.answer(error)
             return
@@ -119,7 +136,7 @@ def build_router(service: TelegramBotService, *, web_app_url: str | None = None)
     @local_router.message(Command("chart"))
     async def chart_handler(message: Message) -> None:
         await _remember_chat(message)
-        chart, error = service.load_latest_chart()
+        chart, error = service.load_latest_chart(theme=_effective_chart_theme(message))
         if error:
             await message.answer(error)
             return
@@ -138,7 +155,10 @@ def build_router(service: TelegramBotService, *, web_app_url: str | None = None)
     @local_router.message(Command("chart_median"))
     async def chart_median_handler(message: Message) -> None:
         await _remember_chat(message)
-        chart, error = service.load_latest_chart(mode=CHART_MODE_MEDIAN_3D)
+        chart, error = service.load_latest_chart(
+            mode=CHART_MODE_MEDIAN_3D,
+            theme=_effective_chart_theme(message),
+        )
         if error:
             await message.answer(error)
             return
@@ -158,6 +178,26 @@ def build_router(service: TelegramBotService, *, web_app_url: str | None = None)
     async def last_handler(message: Message) -> None:
         await _remember_chat(message)
         await message.answer(service.load_last_snapshot_text(), reply_markup=web_markup)
+
+    @local_router.message(Command("theme_dark"))
+    async def theme_dark_handler(message: Message) -> None:
+        service.set_chat_theme(
+            chat_id=str(message.chat.id),
+            chat_type=message.chat.type,
+            title=_chat_title(message),
+            chart_theme=CHART_THEME_DARK,
+        )
+        await message.answer("PNG theme for this chat: dark.")
+
+    @local_router.message(Command("theme_light"))
+    async def theme_light_handler(message: Message) -> None:
+        service.set_chat_theme(
+            chat_id=str(message.chat.id),
+            chat_type=message.chat.type,
+            title=_chat_title(message),
+            chart_theme=CHART_THEME_LIGHT,
+        )
+        await message.answer("PNG theme for this chat: light.")
 
     @local_router.message(Command("web"))
     async def web_handler(message: Message) -> None:
