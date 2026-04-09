@@ -39,9 +39,13 @@ def _command_entries(*, web_app_url: str | None) -> list[tuple[str, str]]:
 
 
 def _commands_text(*, web_app_url: str | None) -> str:
+    command_lines = "\n".join(
+        f"/{name} - {description}"
+        for name, description in _command_entries(web_app_url=web_app_url)
+    )
     return (
         "Available commands:\n"
-        + "\n".join(f"/{name} - {description}" for name, description in _command_entries(web_app_url=web_app_url))
+        + command_lines
     )
 
 
@@ -102,9 +106,8 @@ def build_router(service: TelegramBotService, *, web_app_url: str | None = None)
         )
 
     def _effective_chart_theme(message: Message) -> str:
-        return service.get_chat_theme(chat_id=str(message.chat.id)) or _resolve_telegram_chart_theme(
-            chat_type=message.chat.type
-        )
+        chat_theme = service.get_chat_theme(chat_id=str(message.chat.id))
+        return chat_theme or _resolve_telegram_chart_theme(chat_type=message.chat.type)
 
     async def _send_permission_error(message: Message) -> None:
         await message.answer(

@@ -81,7 +81,9 @@ def test_set_chat_theme_persists_theme_without_changing_subscription() -> None:
     )
 
     with session_factory() as session:
-        chat = session.execute(select(TelegramChat).where(TelegramChat.chat_id == "123")).scalar_one()
+        chat = session.execute(
+            select(TelegramChat).where(TelegramChat.chat_id == "123")
+        ).scalar_one()
         assert chat.chart_theme == CHART_THEME_LIGHT
         assert chat.is_active is False
 

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
-from unittest.mock import patch
 
 from vpn_rating_watcher.charts.service import CHART_THEME_LIGHT, LINE_CHART_TYPE
 from vpn_rating_watcher.db.base import Base
