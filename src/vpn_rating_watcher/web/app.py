@@ -76,6 +76,19 @@ def index() -> str:
   <meta name='viewport' content='width=device-width,initial-scale=1' />
   <title>VPN rating watcher</title>
   <script src='https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js'></script>
+  <script>
+    (() => {
+      const systemThemeMedia = typeof window.matchMedia === 'function'
+        ? window.matchMedia('(prefers-color-scheme: dark)')
+        : null;
+      const hasSystemThemePreference = Boolean(systemThemeMedia && systemThemeMedia.media !== 'not all');
+      const initialTheme = hasSystemThemePreference
+        ? (systemThemeMedia.matches ? 'dark' : 'light')
+        : 'dark';
+      document.documentElement.dataset.theme = initialTheme;
+      document.documentElement.style.colorScheme = initialTheme;
+    })();
+  </script>
   <style>
     :root {
       color-scheme: light;
@@ -157,8 +170,18 @@ def index() -> str:
       align-items: center;
       gap: 8px;
     }
+    .theme-control-group {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+    }
     .group-label {
       font-size: 14px;
+      color: var(--muted);
+    }
+    .control-note {
+      min-height: 16px;
+      font-size: 12px;
       color: var(--muted);
     }
     .segmented {
@@ -186,6 +209,9 @@ def index() -> str:
       background: var(--control-disabled-bg);
       color: var(--control-disabled-text);
       cursor: not-allowed;
+    }
+    .segmented button.system-unavailable {
+      box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.32);
     }
     .segmented button:last-child {
       border-right: 0;
@@ -291,13 +317,14 @@ def index() -> str:
           </div>
         </div>
         <div class='toolbar-spacer'></div>
-        <div class='control-group'>
+        <div class='control-group theme-control-group'>
           <span class='group-label'>Тема:</span>
           <div id='themeButtons' class='segmented'>
-            <button type='button' data-theme='light' class='active'>light</button>
+            <button type='button' data-theme='light'>light</button>
             <button type='button' data-theme='dark'>dark</button>
             <button type='button' data-theme='system'>system</button>
           </div>
+          <div id='themeHint' class='control-note' aria-live='polite'></div>
         </div>
         <button
           id='saveChartButton'
@@ -341,11 +368,14 @@ def index() -> str:
       days: 30,
       topN: 10,
       mode: 'daily',
-      theme: 'light',
+      theme: 'dark',
       selectedSeriesName: null
     };
     const THEME_STORAGE_KEY = 'vrw-theme-preference';
-    const systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+    const systemThemeMedia = typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-color-scheme: dark)')
+      : null;
+    const hasSystemThemePreference = Boolean(systemThemeMedia && systemThemeMedia.media !== 'not all');
 
     function setupSegmentedButtons(containerId, valueAttribute, stateKey) {
       const container = document.getElementById(containerId);
@@ -370,17 +400,40 @@ def index() -> str:
       return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     }
 
+    function setActiveThemeButton(themeButtons, preference) {
+      themeButtons.forEach((button) => {
+        button.classList.toggle('active', button.dataset.theme === preference);
+      });
+    }
+
+    function syncSystemThemeAvailability(systemButton, themeHint) {
+      const themeUnavailableText = 'system недоступен: браузер не сообщает тему устройства';
+      systemButton.disabled = !hasSystemThemePreference;
+      systemButton.classList.toggle('system-unavailable', !hasSystemThemePreference);
+      systemButton.title = hasSystemThemePreference ? '' : themeUnavailableText;
+      systemButton.setAttribute('aria-disabled', String(!hasSystemThemePreference));
+      themeHint.textContent = hasSystemThemePreference ? '' : themeUnavailableText;
+    }
+
+    function getInitialThemePreference(storedPreference) {
+      if (hasSystemThemePreference) {
+        return 'system';
+      }
+      return storedPreference === 'light' || storedPreference === 'dark' ? storedPreference : 'dark';
+    }
+
     function resolveActiveTheme(preference) {
-      if (preference === 'system') {
+      if (preference === 'system' && hasSystemThemePreference) {
         return systemThemeMedia.matches ? 'dark' : 'light';
       }
-      return preference === 'dark' ? 'dark' : 'light';
+      return preference === 'light' ? 'light' : 'dark';
     }
 
     function applyTheme(preference, shouldReloadChart = true) {
-      state.theme = preference;
-      localStorage.setItem(THEME_STORAGE_KEY, preference);
-      const activeTheme = resolveActiveTheme(preference);
+      const normalizedPreference = preference === 'system' && !hasSystemThemePreference ? 'dark' : preference;
+      state.theme = normalizedPreference;
+      localStorage.setItem(THEME_STORAGE_KEY, normalizedPreference);
+      const activeTheme = resolveActiveTheme(normalizedPreference);
       document.documentElement.dataset.theme = activeTheme;
       document.documentElement.style.colorScheme = activeTheme;
       if (shouldReloadChart) {
@@ -391,26 +444,33 @@ def index() -> str:
     function setupThemeButtons() {
       const themeContainer = document.getElementById('themeButtons');
       const themeButtons = Array.from(themeContainer.querySelectorAll('button'));
+      const systemButton = themeContainer.querySelector("[data-theme='system']");
+      const themeHint = document.getElementById('themeHint');
       const stored = localStorage.getItem(THEME_STORAGE_KEY);
-      const initialPreference = stored === 'dark' || stored === 'system' ? stored : 'light';
+      const initialPreference = getInitialThemePreference(stored);
+      syncSystemThemeAvailability(systemButton, themeHint);
       applyTheme(initialPreference, false);
+      setActiveThemeButton(themeButtons, initialPreference);
 
       themeButtons.forEach((button) => {
-        button.classList.toggle('active', button.dataset.theme === initialPreference);
         button.addEventListener('click', () => {
-          const nextTheme = button.dataset.theme || 'light';
-          themeButtons.forEach((item) => {
-            item.classList.toggle('active', item.dataset.theme === nextTheme);
-          });
+          const nextTheme = button.dataset.theme || 'dark';
+          if (nextTheme === 'system' && !hasSystemThemePreference) {
+            syncSystemThemeAvailability(systemButton, themeHint);
+            return;
+          }
+          setActiveThemeButton(themeButtons, nextTheme);
           applyTheme(nextTheme);
         });
       });
 
-      systemThemeMedia.addEventListener('change', () => {
-        if (state.theme === 'system') {
-          applyTheme('system');
-        }
-      });
+      if (systemThemeMedia && typeof systemThemeMedia.addEventListener === 'function') {
+        systemThemeMedia.addEventListener('change', () => {
+          if (state.theme === 'system') {
+            applyTheme('system');
+          }
+        });
+      }
     }
 
     function buildChartTheme() {
