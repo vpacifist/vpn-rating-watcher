@@ -533,7 +533,7 @@ def index() -> str:
     }
 
     function buildTooltipFormatter(series) {
-      const escapeRichText = (value) => String(value ?? '').replace(/([{}|\\])/g, '\\$1');
+      const escapeRichText = (value) => String(value ?? '').replace(/([{}|\\\\])/g, '\\\\$1');
 
       return (params) => {
         if (!Array.isArray(params) || params.length === 0) {
@@ -560,8 +560,8 @@ def index() -> str:
           const safeName = escapeRichText(item.seriesName);
           const safeValue = escapeRichText(formattedValue);
           return `{name|${safeName}}{value|${safeValue}}`;
-        }).join('\n');
-        return `{header|${escapeRichText(formatRuDate(axisValue))}}\n${rows}`;
+        }).join('\\n');
+        return `{header|${escapeRichText(formatRuDate(axisValue))}}\\n${rows}`;
       };
     }
 
