@@ -344,13 +344,19 @@ class TelegramBotService:
         is_active: bool = True,
     ) -> None:
         with self._session_factory() as session:
+            existing = session.execute(
+                select(TelegramChat).where(TelegramChat.chat_id == chat_id)
+            ).scalar_one_or_none()
+            effective_is_active = is_active
+            if existing is not None and chat_type != "private":
+                effective_is_active = existing.is_active
             upsert_telegram_chat(
                 session=session,
                 chat_id=chat_id,
                 chat_type=chat_type,
                 title=title,
                 chart_theme=None,
-                is_active=is_active,
+                is_active=effective_is_active,
             )
 
     def set_chat_subscription(
