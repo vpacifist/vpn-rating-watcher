@@ -359,6 +359,7 @@ def index() -> str:
       'blancvpn': '#2563EB',
       'vpn liberty': '#DC2626',
       'vpn red shield': '#EA580C',
+      'plusone vpn': '#E11D48',
       'наружу': '#EAB308',
       'durev vpn': '#3B82F6',
       'papervpn': '#65A30D',

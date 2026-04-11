@@ -34,6 +34,7 @@ VPN_LINE_COLORS: dict[str, str] = {
     "papervpn": "#A0F249",
     "vpn liberty": "#ba0300",
     "blancvpn": "#3183ff",
+    "plusone vpn": "#FF1F4B",
     "vpn generator": "#A3D9F9",
     "amneziavpn": "#FBB26A",
     "durev vpn": "#3B82F6",
