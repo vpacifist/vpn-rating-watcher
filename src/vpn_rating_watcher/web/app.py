@@ -604,6 +604,83 @@ def index() -> str:
       }));
     }
 
+    function compareSeriesByRawValue(seriesByName, aName, bName, index) {
+      const aSeriesItem = seriesByName.get(aName);
+      const bSeriesItem = seriesByName.get(bName);
+      const aRawValue = aSeriesItem?.values?.[index];
+      const bRawValue = bSeriesItem?.values?.[index];
+      const aValue = aRawValue == null ? Number.NEGATIVE_INFINITY : aRawValue;
+      const bValue = bRawValue == null ? Number.NEGATIVE_INFINITY : bRawValue;
+      if (aValue !== bValue) {
+        return bValue - aValue;
+      }
+      return aName.localeCompare(bName);
+    }
+
+    function enforceLastPointLabelOrder(series, { minValue = 0, maxValue = 36, minGap = 0.72 } = {}) {
+      if (!Array.isArray(series) || series.length < 2) {
+        return series;
+      }
+
+      const lastIndex = Math.max(0, ...series.map((item) => item.values.length - 1));
+      const seriesByName = new Map(series.map((item) => [item.name, item]));
+      const ranked = series
+        .map((item, seriesIndex) => {
+          const rawValue = item.values[lastIndex];
+          const plotValue = item.plotValues?.[lastIndex];
+          if (rawValue == null || plotValue == null) {
+            return null;
+          }
+          return {
+            name: item.name,
+            seriesIndex,
+            preferred: Math.max(minValue, Math.min(maxValue, plotValue)),
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => compareSeriesByRawValue(seriesByName, a.name, b.name, lastIndex));
+
+      if (ranked.length < 2) {
+        return series;
+      }
+
+      const positioned = ranked.map((entry) => entry.preferred);
+      for (let i = 1; i < positioned.length; i += 1) {
+        positioned[i] = Math.min(positioned[i], positioned[i - 1] - minGap);
+      }
+      if (positioned[positioned.length - 1] < minValue) {
+        const shiftUp = minValue - positioned[positioned.length - 1];
+        for (let i = 0; i < positioned.length; i += 1) {
+          positioned[i] += shiftUp;
+        }
+      }
+      for (let i = positioned.length - 2; i >= 0; i -= 1) {
+        positioned[i] = Math.max(positioned[i], positioned[i + 1] + minGap);
+      }
+      if (positioned[0] > maxValue) {
+        const shiftDown = positioned[0] - maxValue;
+        for (let i = 0; i < positioned.length; i += 1) {
+          positioned[i] -= shiftDown;
+        }
+      }
+
+      const targetByName = new Map(
+        ranked.map((entry, idx) => [entry.name, Math.max(minValue, Math.min(maxValue, positioned[idx]))])
+      );
+
+      return series.map((item) => {
+        const adjusted = item.plotValues?.slice() || [];
+        const target = targetByName.get(item.name);
+        if (target != null && adjusted[lastIndex] != null) {
+          adjusted[lastIndex] = target;
+        }
+        return {
+          ...item,
+          plotValues: adjusted,
+        };
+      });
+    }
+
     function buildTooltipFormatter(series) {
       const escapeRichText = (value) => String(value ?? '').replace(/([{}|\\\\])/g, '\\\\$1');
 
@@ -653,18 +730,9 @@ def index() -> str:
         }
         const axisValue = params[0].axisValue;
         const index = params[0].dataIndex;
-        const sorted = [...params].sort((a, b) => {
-          const aSeriesItem = seriesByName.get(a.seriesName);
-          const bSeriesItem = seriesByName.get(b.seriesName);
-          const aRawValue = aSeriesItem?.values?.[index];
-          const bRawValue = bSeriesItem?.values?.[index];
-          const aValue = aRawValue == null ? Number.NEGATIVE_INFINITY : aRawValue;
-          const bValue = bRawValue == null ? Number.NEGATIVE_INFINITY : bRawValue;
-          if (aValue !== bValue) {
-            return bValue - aValue;
-          }
-          return a.seriesName.localeCompare(b.seriesName);
-        });
+        const sorted = [...params].sort((a, b) => (
+          compareSeriesByRawValue(seriesByName, a.seriesName, b.seriesName, index)
+        ));
         const rows = sorted.map((item) => {
           const seriesItem = seriesByName.get(item.seriesName);
           const rawValue = seriesItem?.values?.[index];
@@ -734,7 +802,7 @@ def index() -> str:
             "Данные пока отсутствуют. Проверьте, что sync-hourly уже запускался.";
           return;
         }
-        const spreadSeries = spreadOverlappingSeries(payload.series);
+        const spreadSeries = enforceLastPointLabelOrder(spreadOverlappingSeries(payload.series));
         const chartTheme = buildChartTheme();
 
         const option = {
@@ -814,7 +882,7 @@ def index() -> str:
               ellipsis: '…'
             },
             labelLayout: {
-              moveOverlap: 'shiftY',
+              moveOverlap: 'none',
               hideOverlap: false
             },
             lineStyle: {
