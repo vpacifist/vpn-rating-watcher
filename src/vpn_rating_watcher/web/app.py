@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from vpn_rating_watcher.charts.service import (
     CHART_MODE_DAILY,
@@ -13,7 +14,7 @@ from vpn_rating_watcher.db.session import get_session_factory
 from vpn_rating_watcher.web.payload import build_chart_payload
 
 app = FastAPI(title="VPN Rating Watcher", version="1.0.0")
-
+app.mount("/static", StaticFiles(directory="src/vpn_rating_watcher/web/static"), name="static")
 
 
 @app.get("/health")
@@ -289,6 +290,11 @@ def index() -> str:
       color: var(--text);
     }
   </style>
+  <link rel='icon' type='image/png' href='/static/favicon-96x96.png' sizes='96x96' />
+  <link rel='icon' type='image/svg+xml' href='/static/favicon.svg' />
+  <link rel='shortcut icon' href='/static/favicon.ico' />
+  <link rel='apple-touch-icon' sizes='180x180' href='/static/apple-touch-icon.png' />
+  <link rel="manifest" href="/static/site.webmanifest">
 </head>
 <body>
   <div class='wrap'>

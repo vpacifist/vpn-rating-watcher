@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" width="1000" height="1000"><metadata><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/"><rdf:Description><dc:creator>RealFaviconGenerator</dc:creator><dc:source>https://realfavicongenerator.net</dc:source></rdf:Description></rdf:RDF></metadata><style>
+    #light-icon {
+      display: inline;
+    }
+    #dark-icon {
+      display: none;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      #light-icon {
+        display: none;
+      }
+      #dark-icon {
+        display: inline;
+      }
+    }
+  </style><g id="light-icon"><svg xmlns="http://www.w3.org/2000/svg" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" width="1000" height="1000"><g><g transform="matrix(2,0,0,2,0,0)"><svg xmlns="http://www.w3.org/2000/svg" width="500" height="500" viewBox="0 0 500 500" fill="none"><path d="M250 464C480.5 364.5 439.5 169 445 102" stroke="black" stroke-width="35" stroke-linecap="round"></path><path d="M54 102C106 91.5 204 70 250 36" stroke="black" stroke-width="35" stroke-linecap="round"></path><path d="M445 102C393 91.5 296 70 250 36" stroke="black" stroke-width="35" stroke-linecap="round"></path><path d="M250 464C19.5 364.5 59.5 169 54 102" stroke="black" stroke-width="35" stroke-linecap="round"></path><path d="M91.5 324L175.437 240.548C176.967 239.027 179.299 238.659 181.223 239.634L246.718 272.836C248.67 273.826 251.039 273.43 252.564 271.86L352.5 169" stroke="black" stroke-width="35" stroke-linecap="round"></path></svg></g></g></svg></g><g id="dark-icon"><svg xmlns="http://www.w3.org/2000/svg" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" width="1000" height="1000"><g><g transform="matrix(2,0,0,2,0,0)"><svg xmlns="http://www.w3.org/2000/svg" width="500" height="500" viewBox="0 0 500 500" fill="none"><path d="M250 464C480.5 364.5 439.5 169 445 102" stroke="white" stroke-width="35" stroke-linecap="round"></path><path d="M54 102C106 91.5 204 70 250 36" stroke="white" stroke-width="35" stroke-linecap="round"></path><path d="M445 102C393 91.5 296 70 250 36" stroke="white" stroke-width="35" stroke-linecap="round"></path><path d="M250 464C19.5 364.5 59.5 169 54 102" stroke="white" stroke-width="35" stroke-linecap="round"></path><path d="M91.5 324L175.437 240.548C176.967 239.027 179.299 238.659 181.223 239.634L246.718 272.836C248.67 273.826 251.039 273.43 252.564 271.86L352.5 169" stroke="white" stroke-width="35" stroke-linecap="round"></path></svg></g></g></svg></g></svg>
