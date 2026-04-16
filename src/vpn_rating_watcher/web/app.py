@@ -361,15 +361,6 @@ def index() -> str:
   <script>
     const chart = echarts.init(document.getElementById('chart'));
     const OVERLAP_SPREAD_STEP = 0.24;
-    const LABEL_COLUMN_WIDTH_DESKTOP = 116;
-    const LABEL_COLUMN_WIDTH_MOBILE = 102;
-    const LABEL_BOX_WIDTH_DESKTOP = 104;
-    const LABEL_BOX_WIDTH_MOBILE = 94;
-    const LABEL_BOX_HEIGHT_DESKTOP = 26;
-    const LABEL_BOX_HEIGHT_MOBILE = 24;
-    const LABEL_COLUMN_PADDING_RIGHT = 10;
-    const LABEL_CONNECTOR_GAP = 8;
-    const LABEL_STACK_GAP = 6;
     const LIGHT_THEME_SERIES_COLORS = {
       'blancvpn': '#2563EB',
       'vpn liberty': '#DC2626',
@@ -387,10 +378,7 @@ def index() -> str:
       topN: 10,
       mode: 'daily',
       theme: 'dark',
-      selectedSeriesName: null,
-      renderedSeries: null,
-      renderedChartTheme: null,
-      renderedLabelOptions: null
+      selectedSeriesName: null
     };
     const THEME_STORAGE_KEY = 'vrw-theme-preference';
     const systemThemeMedia = typeof window.matchMedia === 'function'
@@ -635,183 +623,68 @@ def index() -> str:
       return aName.localeCompare(bName);
     }
 
-    function clamp(value, min, max) {
-      return Math.max(min, Math.min(max, value));
-    }
-
-    function findSeriesLastPoint(seriesItem) {
-      if (!seriesItem || !Array.isArray(seriesItem.values) || !Array.isArray(seriesItem.plotValues)) {
-        return null;
-      }
-      for (let index = seriesItem.values.length - 1; index >= 0; index -= 1) {
-        const rawValue = seriesItem.values[index];
-        const plotValue = seriesItem.plotValues[index];
-        if (rawValue == null || plotValue == null) {
-          continue;
-        }
-        return {
-          index,
-          rawValue,
-          plotValue,
-        };
-      }
-      return null;
-    }
-
-    function packLabelCenters(entries, { top, bottom, boxHeight, gap }) {
-      if (!Array.isArray(entries) || entries.length === 0) {
-        return [];
+    function enforceLastPointLabelOrder(series, { minValue = 0, maxValue = 36, minGap = 0.72 } = {}) {
+      if (!Array.isArray(series) || series.length < 2) {
+        return series;
       }
 
-      const minCenter = top + (boxHeight / 2);
-      const maxCenter = bottom - (boxHeight / 2);
-      const availableHeight = Math.max(0, bottom - top);
-      const maxGap = entries.length > 1
-        ? Math.max(0, (availableHeight - (entries.length * boxHeight)) / (entries.length - 1))
-        : 0;
-      const effectiveGap = Math.min(gap, maxGap);
-      const minDistance = boxHeight + effectiveGap;
-      const centers = entries.map((entry) => clamp(entry.preferredY, minCenter, maxCenter));
-
-      for (let index = 1; index < centers.length; index += 1) {
-        centers[index] = Math.max(centers[index], centers[index - 1] + minDistance);
-      }
-      if (centers[centers.length - 1] > maxCenter) {
-        const shiftUp = centers[centers.length - 1] - maxCenter;
-        for (let index = 0; index < centers.length; index += 1) {
-          centers[index] -= shiftUp;
-        }
-      }
-      for (let index = centers.length - 2; index >= 0; index -= 1) {
-        centers[index] = Math.min(centers[index], centers[index + 1] - minDistance);
-      }
-      if (centers[0] < minCenter) {
-        const shiftDown = minCenter - centers[0];
-        for (let index = 0; index < centers.length; index += 1) {
-          centers[index] += shiftDown;
-        }
-      }
-
-      return centers.map((center) => clamp(center, minCenter, maxCenter));
-    }
-
-    function buildPackedEndLabelGraphics(series, chartTheme, { isMobile }) {
-      if (!Array.isArray(series) || series.length === 0) {
-        return [];
-      }
-
-      const top = 48;
-      const bottom = chart.getHeight() - (isMobile ? 72 : 60);
-      const boxWidth = isMobile ? LABEL_BOX_WIDTH_MOBILE : LABEL_BOX_WIDTH_DESKTOP;
-      const boxHeight = isMobile ? LABEL_BOX_HEIGHT_MOBILE : LABEL_BOX_HEIGHT_DESKTOP;
-      const labelX = chart.getWidth() - boxWidth - LABEL_COLUMN_PADDING_RIGHT;
-      const connectorEndX = labelX - LABEL_CONNECTOR_GAP;
+      const lastIndex = Math.max(0, ...series.map((item) => item.values.length - 1));
       const seriesByName = new Map(series.map((item) => [item.name, item]));
-
-      const entries = series
-        .map((seriesItem) => {
-          const lastPoint = findSeriesLastPoint(seriesItem);
-          if (!lastPoint) {
-            return null;
-          }
-          const anchor = chart.convertToPixel(
-            { xAxisIndex: 0, yAxisIndex: 0 },
-            [lastPoint.index, lastPoint.plotValue]
-          );
-          if (!Array.isArray(anchor) || anchor.length < 2 || !Number.isFinite(anchor[1])) {
+      const ranked = series
+        .map((item, seriesIndex) => {
+          const rawValue = item.values[lastIndex];
+          const plotValue = item.plotValues?.[lastIndex];
+          if (rawValue == null || plotValue == null) {
             return null;
           }
           return {
-            name: seriesItem.name,
-            color: resolveSeriesColor(seriesItem) || chartTheme.textColor,
-            anchorX: anchor[0],
-            anchorY: anchor[1],
-            preferredY: clamp(anchor[1], top + (boxHeight / 2), bottom - (boxHeight / 2)),
+            name: item.name,
+            seriesIndex,
+            preferred: Math.max(minValue, Math.min(maxValue, plotValue)),
           };
         })
         .filter(Boolean)
-        .sort((a, b) => {
-          const aPoint = findSeriesLastPoint(seriesByName.get(a.name));
-          const bPoint = findSeriesLastPoint(seriesByName.get(b.name));
-          return compareSeriesByRawValue(
-            seriesByName,
-            a.name,
-            b.name,
-            Math.max(aPoint?.index ?? 0, bPoint?.index ?? 0)
-          );
-        });
+        .sort((a, b) => compareSeriesByRawValue(seriesByName, a.name, b.name, lastIndex));
 
-      const packedCenters = packLabelCenters(entries, {
-        top,
-        bottom,
-        boxHeight,
-        gap: LABEL_STACK_GAP,
+      if (ranked.length < 2) {
+        return series;
+      }
+
+      const positioned = ranked.map((entry) => entry.preferred);
+      for (let i = 1; i < positioned.length; i += 1) {
+        positioned[i] = Math.min(positioned[i], positioned[i - 1] - minGap);
+      }
+      if (positioned[positioned.length - 1] < minValue) {
+        const shiftUp = minValue - positioned[positioned.length - 1];
+        for (let i = 0; i < positioned.length; i += 1) {
+          positioned[i] += shiftUp;
+        }
+      }
+      for (let i = positioned.length - 2; i >= 0; i -= 1) {
+        positioned[i] = Math.max(positioned[i], positioned[i + 1] + minGap);
+      }
+      if (positioned[0] > maxValue) {
+        const shiftDown = positioned[0] - maxValue;
+        for (let i = 0; i < positioned.length; i += 1) {
+          positioned[i] -= shiftDown;
+        }
+      }
+
+      const targetByName = new Map(
+        ranked.map((entry, idx) => [entry.name, Math.max(minValue, Math.min(maxValue, positioned[idx]))])
+      );
+
+      return series.map((item) => {
+        const adjusted = item.plotValues?.slice() || [];
+        const target = targetByName.get(item.name);
+        if (target != null && adjusted[lastIndex] != null) {
+          adjusted[lastIndex] = target;
+        }
+        return {
+          ...item,
+          plotValues: adjusted,
+        };
       });
-      const inactiveOpacity = state.selectedSeriesName ? 0.24 : 1;
-
-      return entries.flatMap((entry, index) => {
-        const centerY = packedCenters[index];
-        const boxY = centerY - (boxHeight / 2);
-        const isActive = !state.selectedSeriesName || state.selectedSeriesName === entry.name;
-        const opacity = isActive ? 1 : inactiveOpacity;
-        return [
-          {
-            type: 'line',
-            silent: true,
-            shape: {
-              x1: entry.anchorX + 3,
-              y1: entry.anchorY,
-              x2: connectorEndX,
-              y2: centerY,
-            },
-            style: {
-              stroke: entry.color,
-              lineWidth: 1.5,
-              opacity: Math.max(0.32, opacity),
-            },
-          },
-          {
-            type: 'rect',
-            silent: true,
-            shape: {
-              x: labelX,
-              y: boxY,
-              width: boxWidth,
-              height: boxHeight,
-              r: 4,
-            },
-            style: {
-              fill: chartTheme.labelBackground,
-              stroke: entry.color,
-              lineWidth: 1,
-              opacity,
-            },
-          },
-          {
-            type: 'text',
-            silent: true,
-            style: {
-              x: labelX + 10,
-              y: centerY,
-              text: entry.name,
-              fill: entry.color,
-              font: `${isMobile ? 13 : 14}px sans-serif`,
-              verticalAlign: 'middle',
-              width: boxWidth - 20,
-              overflow: 'truncate',
-              ellipsis: '…',
-              opacity,
-            },
-          },
-        ];
-      });
-    }
-
-    function renderPackedEndLabels(series, chartTheme, options) {
-      chart.setOption({ graphic: buildPackedEndLabelGraphics(series, chartTheme, options) }, false);
-      state.renderedSeries = series;
-      state.renderedChartTheme = chartTheme;
-      state.renderedLabelOptions = options;
     }
 
     function buildTooltipFormatter(series) {
@@ -935,7 +808,7 @@ def index() -> str:
             "Данные пока отсутствуют. Проверьте, что sync-hourly уже запускался.";
           return;
         }
-        const spreadSeries = spreadOverlappingSeries(payload.series);
+        const spreadSeries = enforceLastPointLabelOrder(spreadOverlappingSeries(payload.series));
         const chartTheme = buildChartTheme();
 
         const option = {
@@ -966,7 +839,7 @@ def index() -> str:
           legend: { show: false },
           grid: {
             left: 10,
-            right: isMobile ? LABEL_COLUMN_WIDTH_MOBILE : LABEL_COLUMN_WIDTH_DESKTOP,
+            right: isMobile ? 82 : 102,
             top: 48,
             bottom: isMobile ? 72 : 60,
             containLabel: true
@@ -1040,22 +913,13 @@ def index() -> str:
             data: item.plotValues
           }))
         };
-        option.series.forEach((seriesItem) => {
-          delete seriesItem.endLabel;
-          delete seriesItem.labelLayout;
-          if (seriesItem.blur) {
-            delete seriesItem.blur.endLabel;
-          }
-        });
         chart.setOption(option, true);
-        renderPackedEndLabels(spreadSeries, chartTheme, { isMobile });
         chart.off('click');
         chart.getZr().off('click');
         chart.on('click', (params) => {
           if (state.selectedSeriesName) {
             state.selectedSeriesName = null;
             chart.dispatchAction({ type: 'downplay', seriesIndex: 'all' });
-            renderPackedEndLabels(spreadSeries, chartTheme, { isMobile });
             return;
           }
           if (params?.componentType === 'series' && params.seriesName) {
@@ -1065,7 +929,6 @@ def index() -> str:
             if (selectedIndex >= 0) {
               chart.dispatchAction({ type: 'highlight', seriesIndex: selectedIndex });
             }
-            renderPackedEndLabels(spreadSeries, chartTheme, { isMobile });
           }
         });
         chart.getZr().on('click', (event) => {
@@ -1074,7 +937,6 @@ def index() -> str:
           }
           state.selectedSeriesName = null;
           chart.dispatchAction({ type: 'downplay', seriesIndex: 'all' });
-          renderPackedEndLabels(spreadSeries, chartTheme, { isMobile });
         });
 
         document.getElementById('meta').innerHTML =
@@ -1095,16 +957,7 @@ def index() -> str:
     setupSegmentedButtons('modeButtons', 'mode', 'mode');
     setupThemeButtons();
     setupScreenshotButton();
-    window.addEventListener('resize', () => {
-      chart.resize();
-      if (state.renderedSeries && state.renderedChartTheme && state.renderedLabelOptions) {
-        renderPackedEndLabels(
-          state.renderedSeries,
-          state.renderedChartTheme,
-          state.renderedLabelOptions
-        );
-      }
-    });
+    window.addEventListener('resize', () => chart.resize());
 
     loadChart();
     setInterval(loadChart, 60 * 60 * 1000);
