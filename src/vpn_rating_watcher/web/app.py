@@ -13,7 +13,7 @@ from vpn_rating_watcher.charts.service import (
 from vpn_rating_watcher.db.session import get_session_factory
 from vpn_rating_watcher.web.payload import build_chart_payload
 
-app = FastAPI(title="VPN Rating Watcher", version="1.0.0")
+app = FastAPI(title="VPN Availability Watcher", version="1.0.0")
 app.mount("/static", StaticFiles(directory="src/vpn_rating_watcher/web/static"), name="static")
 
 
@@ -75,7 +75,7 @@ def index() -> str:
 <head>
   <meta charset='utf-8' />
   <meta name='viewport' content='width=device-width,initial-scale=1' />
-  <title>VPN rating watcher</title>
+  <title>VPN availability watcher</title>
   <script src='https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js'></script>
   <script>
     (() => {
@@ -161,7 +161,8 @@ def index() -> str:
     .toolbar {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      column-gap: 16px;
+      row-gap: 8px;
       align-items: center;
       margin-bottom: 10px;
     }
@@ -171,7 +172,7 @@ def index() -> str:
     .control-group {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      gap: 5px;
     }
     .theme-control-group {
       flex-direction: column;
@@ -179,7 +180,7 @@ def index() -> str:
       gap: 4px;
     }
     .group-label {
-      font-size: 14px;
+      font-size: 13px;
       color: var(--muted);
     }
     .control-note {
@@ -199,8 +200,8 @@ def index() -> str:
       color: var(--muted);
       border: 0;
       border-right: 1px solid var(--panel-border);
-      padding: 8px 10px;
-      font-size: 14px;
+      padding: 5px 8px;
+      font-size: 13px;
       cursor: pointer;
       transition: background 0.15s ease-in-out, color 0.15s ease-in-out;
     }
@@ -232,16 +233,16 @@ def index() -> str:
     .screenshot-button {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 0 12px;
-      min-height: 38px;
-      border-radius: 8px;
+      gap: 6px;
+      padding: 0 8px;
+      min-height: 26px;
+      border-radius: 7px;
       border: 1px solid var(--panel-border);
       background: var(--control-bg);
       color: var(--text);
       cursor: pointer;
       transition: background 0.15s ease-in-out;
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
       text-transform: lowercase;
     }
@@ -254,8 +255,8 @@ def index() -> str:
       cursor: not-allowed;
     }
     .screenshot-button svg {
-      width: 18px;
-      height: 18px;
+      width: 15px;
+      height: 15px;
       display: block;
     }
     #chart {
@@ -298,7 +299,7 @@ def index() -> str:
 </head>
 <body>
   <div class='wrap'>
-    <h2>Рейтинг VPN</h2>
+    <h2>Доступность VPN</h2>
     <div class='card'>
       <div class='toolbar'>
         <div class='control-group'>
@@ -360,7 +361,7 @@ def index() -> str:
   </div>
   <script>
     const chart = echarts.init(document.getElementById('chart'));
-    const OVERLAP_SPREAD_STEP = 0.24;
+    const OVERLAP_SPREAD_STEP = 0.67;
     const LIGHT_THEME_SERIES_COLORS = {
       'blancvpn': '#2563EB',
       'vpn liberty': '#DC2626',
@@ -605,7 +606,7 @@ def index() -> str:
         plotValues: item.values.map((value, index) => {
           if (value == null) return null;
           const adjusted = value + (offsetMaps[seriesIndex].get(index) || 0);
-          return Math.max(0, Math.min(36, adjusted));
+          return Math.max(0, Math.min(100, adjusted));
         })
       }));
     }
@@ -623,15 +624,72 @@ def index() -> str:
       return aName.localeCompare(bName);
     }
 
-    function enforceLastPointLabelOrder(series, { minValue = 0, maxValue = 36, minGap = 0.72 } = {}) {
+    function textMeasureContext() {
+      if (!textMeasureContext.cached) {
+        textMeasureContext.cached = document.createElement('canvas').getContext('2d');
+      }
+      return textMeasureContext.cached;
+    }
+
+    function measureTextWidth(text, { fontSize = 13, fontWeight = 400 } = {}) {
+      const context = textMeasureContext();
+      context.font = `${fontWeight} ${fontSize}px Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+      return Math.ceil(context.measureText(String(text ?? '')).width);
+    }
+
+    function computeChartLayout(series, { isMobile }) {
+      const axisLabelFontSize = isMobile ? 11 : 12;
+      const axisNameFontSize = isMobile ? 12 : 13;
+      const endLabelFontSize = isMobile ? 12 : 13;
+      const endLabelPadX = isMobile ? 5 : 6;
+      const endLabelPadY = 3;
+      const tickValues = [0, 20, 40, 60, 80, 100];
+      const tickWidth = Math.max(...tickValues.map((value) => (
+        measureTextWidth(`${value}`, { fontSize: axisLabelFontSize })
+      )));
+      const yAxisLabelMargin = isMobile ? 6 : 8;
+      const yAxisNameGap = isMobile ? 6 : 8;
+      const gridLeft = Math.ceil(tickWidth + yAxisLabelMargin + axisNameFontSize + yAxisNameGap + 4);
+
+      const maxLabelTextWidth = Math.max(
+        0,
+        ...series.map((item) => measureTextWidth(item.name, { fontSize: endLabelFontSize }))
+      );
+      const endLabelWidth = Math.max(32, maxLabelTextWidth + (endLabelPadX * 2));
+      const endLabelDistance = isMobile ? 6 : 8;
+      const gridRight = endLabelWidth + endLabelDistance + 6;
+
+      return {
+        axisLabelFontSize,
+        axisNameFontSize,
+        endLabelDistance,
+        endLabelFontSize,
+        endLabelPadX,
+        endLabelPadY,
+        endLabelWidth,
+        gridBottom: isMobile ? 58 : 50,
+        gridLeft,
+        gridRight,
+        gridTop: isMobile ? 16 : 14,
+        yAxisLabelMargin,
+        yAxisNameGap,
+      };
+    }
+
+    function computeEndLabelPositions(series, { layout, chartHeight }) {
       if (!Array.isArray(series) || series.length < 2) {
-        return series;
+        return new Map();
       }
 
       const lastIndex = Math.max(0, ...series.map((item) => item.values.length - 1));
-      const seriesByName = new Map(series.map((item) => [item.name, item]));
+      const plotHeight = Math.max(1, chartHeight - layout.gridTop - layout.gridBottom);
+      const labelHeight = Math.ceil(layout.endLabelFontSize + (layout.endLabelPadY * 2) + 2);
+      const minCenterGap = labelHeight + 1;
+      const upperCenter = layout.gridTop + (labelHeight / 2);
+      const lowerCenter = chartHeight - layout.gridBottom - (labelHeight / 2);
+      const valueToCenterY = (value) => layout.gridTop + ((100 - value) / 100) * plotHeight;
       const ranked = series
-        .map((item, seriesIndex) => {
+        .map((item) => {
           const rawValue = item.values[lastIndex];
           const plotValue = item.plotValues?.[lastIndex];
           if (rawValue == null || plotValue == null) {
@@ -639,52 +697,60 @@ def index() -> str:
           }
           return {
             name: item.name,
-            seriesIndex,
-            preferred: Math.max(minValue, Math.min(maxValue, plotValue)),
+            rawValue,
+            plotValue,
+            preferredCenter: valueToCenterY(plotValue),
           };
         })
         .filter(Boolean)
-        .sort((a, b) => compareSeriesByRawValue(seriesByName, a.name, b.name, lastIndex));
+        .sort((a, b) => {
+          if (a.plotValue !== b.plotValue) {
+            return b.plotValue - a.plotValue;
+          }
+          if (a.rawValue !== b.rawValue) {
+            return b.rawValue - a.rawValue;
+          }
+          return a.name.localeCompare(b.name);
+        });
 
       if (ranked.length < 2) {
-        return series;
+        return new Map();
       }
 
-      const positioned = ranked.map((entry) => entry.preferred);
+      const positioned = ranked.map((entry) => entry.preferredCenter);
       for (let i = 1; i < positioned.length; i += 1) {
-        positioned[i] = Math.min(positioned[i], positioned[i - 1] - minGap);
+        positioned[i] = Math.max(positioned[i], positioned[i - 1] + minCenterGap);
       }
-      if (positioned[positioned.length - 1] < minValue) {
-        const shiftUp = minValue - positioned[positioned.length - 1];
+      if (positioned[positioned.length - 1] > lowerCenter) {
+        const shiftUp = positioned[positioned.length - 1] - lowerCenter;
         for (let i = 0; i < positioned.length; i += 1) {
-          positioned[i] += shiftUp;
+          positioned[i] -= shiftUp;
         }
       }
       for (let i = positioned.length - 2; i >= 0; i -= 1) {
-        positioned[i] = Math.max(positioned[i], positioned[i + 1] + minGap);
+        positioned[i] = Math.min(positioned[i], positioned[i + 1] - minCenterGap);
       }
-      if (positioned[0] > maxValue) {
-        const shiftDown = positioned[0] - maxValue;
+      if (positioned[0] < upperCenter) {
+        const shiftDown = upperCenter - positioned[0];
         for (let i = 0; i < positioned.length; i += 1) {
-          positioned[i] -= shiftDown;
+          positioned[i] += shiftDown;
         }
       }
 
-      const targetByName = new Map(
-        ranked.map((entry, idx) => [entry.name, Math.max(minValue, Math.min(maxValue, positioned[idx]))])
-      );
+      return new Map(ranked.map((entry, idx) => [entry.name, positioned[idx]]));
+    }
 
-      return series.map((item) => {
-        const adjusted = item.plotValues?.slice() || [];
-        const target = targetByName.get(item.name);
-        if (target != null && adjusted[lastIndex] != null) {
-          adjusted[lastIndex] = target;
-        }
-        return {
-          ...item,
-          plotValues: adjusted,
-        };
-      });
+    function compareSeriesByVisibleValue(seriesByName, aName, bName, index) {
+      const aSeriesItem = seriesByName.get(aName);
+      const bSeriesItem = seriesByName.get(bName);
+      const aPlotValue = aSeriesItem?.plotValues?.[index];
+      const bPlotValue = bSeriesItem?.plotValues?.[index];
+      const aVisibleValue = aPlotValue == null ? Number.NEGATIVE_INFINITY : aPlotValue;
+      const bVisibleValue = bPlotValue == null ? Number.NEGATIVE_INFINITY : bPlotValue;
+      if (aVisibleValue !== bVisibleValue) {
+        return bVisibleValue - aVisibleValue;
+      }
+      return compareSeriesByRawValue(seriesByName, aName, bName, index);
     }
 
     function buildTooltipFormatter(series) {
@@ -711,7 +777,7 @@ def index() -> str:
         const rows = sorted.map((item) => {
           const seriesItem = series.find((entry) => entry.name === item.seriesName);
           const rawValue = seriesItem?.values?.[index];
-          const formattedValue = rawValue == null ? '—' : String(Math.round(rawValue));
+          const formattedValue = rawValue == null ? '—' : `${Math.round(rawValue)}%`;
           const safeName = escapeRichText(item.seriesName);
           const safeValue = escapeRichText(formattedValue);
           return `{name|${safeName}}{value|${safeValue}}`;
@@ -737,7 +803,7 @@ def index() -> str:
         const axisValue = params[0].axisValue;
         const index = params[0].dataIndex;
         const sorted = [...params].sort((a, b) => (
-          compareSeriesByRawValue(seriesByName, a.seriesName, b.seriesName, index)
+          compareSeriesByVisibleValue(seriesByName, a.seriesName, b.seriesName, index)
         ));
         const rows = sorted.map((item) => {
           const seriesItem = seriesByName.get(item.seriesName);
@@ -745,7 +811,7 @@ def index() -> str:
           const markerColor = escapeHtml(
             item.color || resolveSeriesColor(seriesItem || {}) || cssVar('--accent')
           );
-          const formattedValue = rawValue == null ? '&mdash;' : escapeHtml(Math.round(rawValue));
+          const formattedValue = rawValue == null ? '&mdash;' : escapeHtml(`${Math.round(rawValue)}%`);
           const markerStyle = [
             'width:8px',
             'height:8px',
@@ -808,8 +874,13 @@ def index() -> str:
             "Данные пока отсутствуют. Проверьте, что sync-hourly уже запускался.";
           return;
         }
-        const spreadSeries = enforceLastPointLabelOrder(spreadOverlappingSeries(payload.series));
         const chartTheme = buildChartTheme();
+        const layout = computeChartLayout(payload.series, { isMobile });
+        const spreadSeries = spreadOverlappingSeries(payload.series);
+        const endLabelCenters = computeEndLabelPositions(
+          spreadSeries,
+          { layout, chartHeight: chart.getHeight() }
+        );
 
         const option = {
           backgroundColor: 'transparent',
@@ -834,30 +905,47 @@ def index() -> str:
               '-webkit-backdrop-filter:blur(10px)',
               'overflow:hidden'
             ].join(';'),
-            formatter: buildHtmlTooltipFormatter(payload.series)
+            formatter: buildHtmlTooltipFormatter(spreadSeries)
           },
           legend: { show: false },
           grid: {
-            left: 10,
-            right: isMobile ? 82 : 102,
-            top: 48,
-            bottom: isMobile ? 72 : 60,
-            containLabel: true
+            left: layout.gridLeft,
+            right: layout.gridRight,
+            top: layout.gridTop,
+            bottom: layout.gridBottom,
+            containLabel: false
           },
           xAxis: {
             type: 'category',
             data: payload.labels,
             axisLine: { lineStyle: { color: chartTheme.gridColor } },
             axisTick: { lineStyle: { color: chartTheme.gridColor } },
-            axisLabel: { color: chartTheme.axisColor, rotate: isMobile ? 35 : 40 }
+            axisLabel: {
+              color: chartTheme.axisColor,
+              fontSize: layout.axisLabelFontSize,
+              rotate: isMobile ? 35 : 40
+            }
           },
           yAxis: {
             type: 'value',
             min: 0,
-            max: 36,
+            max: 100,
+            name: 'Доступность',
+            nameLocation: 'middle',
+            nameRotate: 90,
+            nameGap: layout.yAxisNameGap,
+            nameTextStyle: {
+              color: chartTheme.axisColor,
+              fontSize: layout.axisNameFontSize,
+              fontWeight: 600
+            },
             axisLine: { lineStyle: { color: chartTheme.gridColor } },
             axisTick: { show: false },
-            axisLabel: { color: chartTheme.axisColor },
+            axisLabel: {
+              color: chartTheme.axisColor,
+              fontSize: layout.axisLabelFontSize,
+              margin: layout.yAxisLabelMargin
+            },
             splitLine: {
               lineStyle: {
                 color: chartTheme.gridColor,
@@ -882,14 +970,24 @@ def index() -> str:
               borderColor: resolveSeriesColor(item),
               borderWidth: 1,
               borderRadius: 4,
-              padding: [3, 6],
-              width: isMobile ? 94 : 104,
-              overflow: 'truncate',
-              ellipsis: '…'
+              distance: layout.endLabelDistance,
+              fontSize: layout.endLabelFontSize,
+              padding: [layout.endLabelPadY, layout.endLabelPadX],
+              width: layout.endLabelWidth
             },
-            labelLayout: {
-              moveOverlap: 'none',
-              hideOverlap: false
+            labelLayout: (params) => {
+              const labelCenter = endLabelCenters.get(item.name);
+              if (labelCenter == null || params?.labelRect == null) {
+                return {
+                  moveOverlap: 'none',
+                  hideOverlap: false
+                };
+              }
+              return {
+                y: labelCenter - (params.labelRect.height / 2),
+                moveOverlap: 'none',
+                hideOverlap: false
+              };
             },
             lineStyle: {
               width: window.devicePixelRatio >= 2 ? 2.6 : 3,
