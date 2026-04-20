@@ -79,6 +79,12 @@ def index() -> str:
   <script src='https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js'></script>
   <script>
     (() => {
+      const updateViewportHeight = () => {
+        document.documentElement.style.setProperty('--viewport-height', `${window.innerHeight}px`);
+      };
+      updateViewportHeight();
+      window.addEventListener('resize', updateViewportHeight);
+
       const systemThemeMedia = typeof window.matchMedia === 'function'
         ? window.matchMedia('(prefers-color-scheme: dark)')
         : null;
@@ -116,6 +122,7 @@ def index() -> str:
       --chart-line-shadow: rgba(99, 116, 143, 0.18);
       --chart-export-bg: #f7f9fc;
       --focus-ring: rgba(37, 99, 235, 0.35);
+      --viewport-height: 100vh;
     }
     :root[data-theme='dark'] {
       color-scheme: dark;
@@ -139,24 +146,44 @@ def index() -> str:
       --chart-export-bg: #111523;
       --focus-ring: rgba(91, 164, 255, 0.4);
     }
+    * {
+      box-sizing: border-box;
+    }
+    html {
+      min-height: 100%;
+    }
     body {
       margin: 0;
       font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
       padding: 12px;
+      min-height: var(--viewport-height);
       overflow-y: auto;
       scrollbar-gutter: stable;
     }
     .wrap {
       max-width: 1200px;
+      height: calc(var(--viewport-height) - 24px);
       margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    h2 {
+      flex: 0 0 auto;
+      margin: 18px 0 14px;
+      line-height: 1.12;
     }
     .card {
       background: var(--panel);
       border: 1px solid var(--panel-border);
       border-radius: 12px;
       padding: 12px;
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      min-height: 0;
     }
     .toolbar {
       display: flex;
@@ -164,6 +191,7 @@ def index() -> str:
       column-gap: 16px;
       row-gap: 8px;
       align-items: center;
+      flex: 0 0 auto;
       margin-bottom: 10px;
     }
     .toolbar-spacer {
@@ -175,18 +203,21 @@ def index() -> str:
       gap: 5px;
     }
     .theme-control-group {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 4px;
+      flex-wrap: wrap;
     }
     .group-label {
       font-size: 13px;
       color: var(--muted);
     }
     .control-note {
+      display: none;
+      flex-basis: 100%;
       min-height: 16px;
       font-size: 12px;
       color: var(--muted);
+    }
+    .control-note:not(:empty) {
+      display: block;
     }
     .segmented {
       display: inline-flex;
@@ -261,11 +292,13 @@ def index() -> str:
     }
     #chart {
       width: 100%;
-      min-height: 52vh;
-      height: 70vh;
+      flex: 1 1 auto;
+      min-height: 0;
+      height: auto;
     }
     .meta {
       color: var(--muted);
+      flex: 0 0 auto;
       font-size: 13px;
       margin-top: 8px;
     }
@@ -637,7 +670,12 @@ def index() -> str:
       return Math.ceil(context.measureText(String(text ?? '')).width);
     }
 
-    function computeChartLayout(series, { isMobile }) {
+    function computeRotatedTextHeight(textWidth, { fontSize, rotateDeg }) {
+      const angleRad = Math.abs(rotateDeg) * Math.PI / 180;
+      return (textWidth * Math.sin(angleRad)) + (fontSize * Math.cos(angleRad));
+    }
+
+    function computeChartLayout(series, labels, { isMobile }) {
       const axisLabelFontSize = isMobile ? 11 : 12;
       const axisNameFontSize = isMobile ? 12 : 13;
       const endLabelFontSize = isMobile ? 12 : 13;
@@ -648,8 +686,26 @@ def index() -> str:
         measureTextWidth(`${value}`, { fontSize: axisLabelFontSize })
       )));
       const yAxisLabelMargin = isMobile ? 6 : 8;
-      const yAxisNameGap = isMobile ? 6 : 8;
-      const gridLeft = Math.ceil(tickWidth + yAxisLabelMargin + axisNameFontSize + yAxisNameGap + 4);
+      const yAxisNameLabelGap = isMobile ? 8 : 10;
+      const yAxisOuterPadding = isMobile ? 4 : 6;
+      const yAxisNameGap = Math.ceil(
+        yAxisLabelMargin + tickWidth + yAxisNameLabelGap + (axisNameFontSize / 2)
+      );
+      const gridLeft = Math.ceil(yAxisNameGap + (axisNameFontSize / 2) + yAxisOuterPadding);
+
+      const xAxisLabelRotate = isMobile ? 35 : 40;
+      const xAxisLabelMargin = isMobile ? 8 : 10;
+      const xAxisOuterPadding = isMobile ? 8 : 10;
+      const dateLabels = Array.isArray(labels) ? labels : [];
+      const maxDateLabelWidth = Math.max(
+        0,
+        ...dateLabels.map((label) => measureTextWidth(label, { fontSize: axisLabelFontSize }))
+      );
+      const xAxisLabelHeight = computeRotatedTextHeight(
+        maxDateLabelWidth,
+        { fontSize: axisLabelFontSize, rotateDeg: xAxisLabelRotate }
+      );
+      const gridBottom = Math.ceil(xAxisLabelHeight + xAxisLabelMargin + xAxisOuterPadding);
 
       const maxLabelTextWidth = Math.max(
         0,
@@ -667,10 +723,12 @@ def index() -> str:
         endLabelPadX,
         endLabelPadY,
         endLabelWidth,
-        gridBottom: isMobile ? 58 : 50,
+        gridBottom,
         gridLeft,
         gridRight,
         gridTop: isMobile ? 16 : 14,
+        xAxisLabelMargin,
+        xAxisLabelRotate,
         yAxisLabelMargin,
         yAxisNameGap,
       };
@@ -875,7 +933,7 @@ def index() -> str:
           return;
         }
         const chartTheme = buildChartTheme();
-        const layout = computeChartLayout(payload.series, { isMobile });
+        const layout = computeChartLayout(payload.series, payload.labels, { isMobile });
         const spreadSeries = spreadOverlappingSeries(payload.series);
         const endLabelCenters = computeEndLabelPositions(
           spreadSeries,
@@ -923,7 +981,8 @@ def index() -> str:
             axisLabel: {
               color: chartTheme.axisColor,
               fontSize: layout.axisLabelFontSize,
-              rotate: isMobile ? 35 : 40
+              margin: layout.xAxisLabelMargin,
+              rotate: layout.xAxisLabelRotate
             }
           },
           yAxis: {
@@ -1055,7 +1114,12 @@ def index() -> str:
     setupSegmentedButtons('modeButtons', 'mode', 'mode');
     setupThemeButtons();
     setupScreenshotButton();
-    window.addEventListener('resize', () => chart.resize());
+    let resizeReloadTimeout = null;
+    window.addEventListener('resize', () => {
+      chart.resize();
+      window.clearTimeout(resizeReloadTimeout);
+      resizeReloadTimeout = window.setTimeout(loadChart, 150);
+    });
 
     loadChart();
     setInterval(loadChart, 60 * 60 * 1000);
