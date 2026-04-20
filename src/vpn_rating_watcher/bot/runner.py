@@ -119,7 +119,7 @@ def build_router(service: TelegramBotService, *, web_app_url: str | None = None)
     async def start_handler(message: Message) -> None:
         await _remember_chat(message)
         await message.answer(
-            "VPN Rating Watcher bot.\n" + _commands_text(web_app_url=normalized_web_app_url),
+            "VPN Availability Watcher bot.\n" + _commands_text(web_app_url=normalized_web_app_url),
             reply_markup=web_markup,
         )
 
@@ -141,7 +141,7 @@ def build_router(service: TelegramBotService, *, web_app_url: str | None = None)
         assert chart is not None
         try:
             caption = (
-                f"Chart date: {chart.chart_date.isoformat() if chart.chart_date else 'unknown'}"
+                f"График доступности: {chart.chart_date.isoformat() if chart.chart_date else 'unknown'}"
             )
             await message.answer_photo(
                 photo=FSInputFile(chart.file_path),
@@ -161,7 +161,7 @@ def build_router(service: TelegramBotService, *, web_app_url: str | None = None)
         assert chart is not None
         try:
             chart_date_label = chart.chart_date.isoformat() if chart.chart_date else "unknown"
-            caption = f"Latest chart ({chart_date_label})"
+            caption = f"Последний график доступности ({chart_date_label})"
             await message.answer_photo(
                 photo=FSInputFile(chart.file_path),
                 caption=caption,

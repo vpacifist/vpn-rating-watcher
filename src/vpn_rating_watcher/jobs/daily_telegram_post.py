@@ -114,7 +114,7 @@ def run_daily_posting_job(
         chart_date_label = (
             chart.chart_date.isoformat() if chart.chart_date else resolved_today.isoformat()
         )
-        caption = f"Daily chart: {chart_date_label}"
+        caption = f"График доступности за {chart_date_label}"
 
         posted_count = 0
         skipped_count = 0

@@ -9,6 +9,8 @@ from tempfile import NamedTemporaryFile
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.font_manager import FontProperties
+from matplotlib.textpath import TextPath
 from sqlalchemy import Select, and_, desc, func, select
 from sqlalchemy.orm import Session
 
@@ -27,7 +29,7 @@ CHART_MODES = (CHART_MODE_DAILY, CHART_MODE_MEDIAN_3D)
 CHART_THEME_DARK = "dark"
 CHART_THEME_LIGHT = "light"
 CHART_THEMES = (CHART_THEME_DARK, CHART_THEME_LIGHT)
-OVERLAP_SPREAD_STEP = 0.24
+OVERLAP_SPREAD_STEP = 0.67
 
 VPN_LINE_COLORS: dict[str, str] = {
     "vpn red shield": "#ff5b27",
@@ -219,7 +221,7 @@ def query_daily_aggregated_scores(
         select(
             Vpn.name.label("vpn_name"),
             effective_row_date.label("point_date"),
-            VpnSnapshotResult.score.label("score"),
+            (VpnSnapshotResult.score_pct * 100.0).label("score"),
         )
         .select_from(VpnSnapshotResult)
         .join(Snapshot, Snapshot.id == VpnSnapshotResult.snapshot_id)
@@ -396,7 +398,9 @@ def _render_line_chart(
     if theme not in CHART_THEMES:
         raise ValueError(f"Unsupported chart theme: {theme}")
 
-    width = max(10, len(dates) * 0.4)
+    base_width = max(10, len(dates) * 0.4)
+    label_reserve_width = _estimate_label_reserve_width_inches(vpn_names=vpn_names, fontsize=8)
+    width = base_width + label_reserve_width
     height = max(6, len(vpn_names) * 0.35)
 
     is_dark = theme == CHART_THEME_DARK
@@ -420,7 +424,7 @@ def _render_line_chart(
         vpn_names=vpn_names,
         spread_step=OVERLAP_SPREAD_STEP,
         min_value=0.0,
-        max_value=36.0,
+        max_value=100.0,
     )
     endpoints: list[tuple[str, float, float, str]] = []
     for idx, vpn_name in enumerate(vpn_names):
@@ -440,6 +444,7 @@ def _render_line_chart(
         if line_color:
             plot_kwargs["color"] = line_color
         smooth_x, smooth_y = _smooth_curve_points(observed_x, observed_y)
+        smooth_y = np.clip(smooth_y, 0.0, 100.0)
         (line,) = ax.plot(smooth_x, smooth_y, **plot_kwargs)
         endpoints.append(
             (
@@ -451,13 +456,21 @@ def _render_line_chart(
         )
 
     ax.set_xlabel("Date", color=text_color)
-    ax.set_ylabel("Score", color=text_color)
-    ax.set_ylim(0, 37)
-    ax.set_xlim(-0.5, max(0.0, float(len(dates) - 1)) + 2.5)
+    ax.set_ylabel("Доступность", color=text_color)
+    ax.set_ylim(0, 102)
+    ax.set_xlim(
+        -0.5,
+        max(0.0, float(len(dates) - 1))
+        + _estimate_label_reserve_x_units(
+            date_count=len(dates),
+            plot_width_inches=base_width,
+            label_reserve_width_inches=label_reserve_width,
+        ),
+    )
 
     generated_at = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     ax.set_title(
-        f"VPN Historical Scores ({source_name})\nGenerated: {generated_at}",
+        f"История доступности VPN ({source_name})\nGenerated: {generated_at}",
         color=text_color,
         fontsize=12,
         pad=14,
@@ -581,6 +594,30 @@ def _compute_label_positions(
     return positioned
 
 
+def _estimate_label_reserve_width_inches(*, vpn_names: list[str], fontsize: float) -> float:
+    if not vpn_names:
+        return 1.4
+
+    font = FontProperties(size=fontsize)
+    max_width_points = max(
+        TextPath((0, 0), vpn_name, prop=font).get_extents().width
+        for vpn_name in vpn_names
+    )
+    horizontal_padding_points = 18.0
+    connector_padding_points = 12.0
+    return (max_width_points + horizontal_padding_points + connector_padding_points) / 72.0
+
+
+def _estimate_label_reserve_x_units(
+    *, date_count: int, plot_width_inches: float, label_reserve_width_inches: float
+) -> float:
+    data_span = max(1.0, float(date_count - 1))
+    usable_plot_width = max(4.0, plot_width_inches - 1.5)
+    units_per_inch = data_span / usable_plot_width
+    connector_units = 0.9
+    return max(2.0, label_reserve_width_inches * units_per_inch + connector_units)
+
+
 def color_for_vpn(vpn_name: str) -> str | None:
     normalized_name = " ".join(vpn_name.split()).casefold()
     return VPN_LINE_COLORS.get(normalized_name)
@@ -597,9 +634,9 @@ def _add_end_labels(
     if not endpoints:
         return
 
-    ymax = ax.get_ylim()[1] - 0.4
+    ymax = ax.get_ylim()[1] - 1.2
     y_values = [endpoint[2] for endpoint in endpoints]
-    label_ys = _compute_label_positions(y_values, lower=0.4, upper=ymax, min_gap=0.7)
+    label_ys = _compute_label_positions(y_values, lower=1.2, upper=ymax, min_gap=1.2)
     label_x = max(endpoint[1] for endpoint in endpoints) + 0.55
 
     for (vpn_name, x_end, y_end, color), y_label in zip(endpoints, label_ys, strict=True):

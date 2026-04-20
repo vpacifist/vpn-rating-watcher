@@ -42,8 +42,6 @@ class ChartLookupResult:
 class LastSnapshotRow:
     rank_position: int
     vpn_name: str
-    score: int
-    score_max: int
     score_pct: float
     checked_at: datetime | None
     checked_at_raw: str | None
@@ -116,6 +114,10 @@ def _checked_at_utc(row: LastSnapshotRow) -> datetime | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def _format_short_utc_datetime(value: datetime) -> str:
+    return f"{value.day} {value.strftime('%b, %H:%M')}"
 
 
 def upsert_telegram_chat(
@@ -229,8 +231,6 @@ def get_last_snapshot_summary(session: Session) -> LastSnapshotSummary | None:
         select(
             VpnSnapshotResult.rank_position,
             Vpn.name,
-            VpnSnapshotResult.score,
-            VpnSnapshotResult.score_max,
             VpnSnapshotResult.score_pct,
             VpnSnapshotResult.checked_at,
             VpnSnapshotResult.checked_at_raw,
@@ -245,13 +245,11 @@ def get_last_snapshot_summary(session: Session) -> LastSnapshotSummary | None:
         LastSnapshotRow(
             rank_position=rank,
             vpn_name=vpn_name,
-            score=score,
-            score_max=score_max,
             score_pct=score_pct,
             checked_at=checked_at,
             checked_at_raw=checked_at_raw,
         )
-        for rank, vpn_name, score, score_max, score_pct, checked_at, checked_at_raw in rows
+        for rank, vpn_name, score_pct, checked_at, checked_at_raw in rows
     ]
 
     fetched_at = latest_snapshot.fetched_at
@@ -268,7 +266,7 @@ def get_last_snapshot_summary(session: Session) -> LastSnapshotSummary | None:
 def format_last_snapshot_summary(summary: LastSnapshotSummary) -> str:
     fetched_utc = summary.fetched_at.astimezone(timezone.utc)
     lines = [
-        f"🏆 Top VPN — snapshot {fetched_utc.strftime('%Y-%m-%d %H:%M UTC')}",
+        f"🏆 Доступность VPN — snapshot {fetched_utc.strftime('%Y-%m-%d %H:%M UTC')}",
         "",
     ]
 
@@ -289,7 +287,7 @@ def format_last_snapshot_summary(summary: LastSnapshotSummary) -> str:
         lines.append(
             f"{_score_emoji(row.score_pct)} "
             f"#{row.rank_position} {row.vpn_name} — "
-            f"{pct:.1f}% ({row.score}/{row.score_max})"
+            f"доступность {pct:.1f}%"
             f"{stale_suffix}"
         )
 
@@ -300,8 +298,7 @@ def format_last_snapshot_summary(summary: LastSnapshotSummary) -> str:
         return "\n".join(lines)
 
     lines.append("")
-    provider_size = summary.top_rows[0].score_max if summary.top_rows else "unknown"
-    lines.append(f"ℹ️ Source: {summary.source_name} · {provider_size} checks/provider")
+    lines.append(f"ℹ️ Source: {summary.source_name}")
 
     if checked_times:
         sorted_times = sorted(checked_times)
@@ -309,13 +306,13 @@ def format_last_snapshot_summary(summary: LastSnapshotSummary) -> str:
         end_time = sorted_times[-1]
         if start_time.date() == end_time.date():
             freshness = (
-                f"{start_time.strftime('%-d %b, %H:%M')}–"
+                f"{_format_short_utc_datetime(start_time)}–"
                 f"{end_time.strftime('%H:%M')} UTC"
             )
         else:
             freshness = (
-                f"{start_time.strftime('%-d %b, %H:%M')}–"
-                f"{end_time.strftime('%-d %b, %H:%M')} UTC"
+                f"{_format_short_utc_datetime(start_time)}–"
+                f"{_format_short_utc_datetime(end_time)} UTC"
             )
         if outlier_names:
             outlier_text = ", ".join(outlier_names)
