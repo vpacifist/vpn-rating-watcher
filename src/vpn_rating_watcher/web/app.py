@@ -1002,10 +1002,10 @@ def index() -> str:
               }
             },
             blur: {
-              lineStyle: { opacity: 0.2 },
-              itemStyle: { opacity: 0.2 },
-              label: { opacity: 0.2 },
-              endLabel: { opacity: 0.2 }
+              lineStyle: { opacity: 0.08 },
+              itemStyle: { opacity: 0.08 },
+              label: { opacity: 0.08 },
+              endLabel: { opacity: 0.08 }
             },
             color: resolveSeriesColor(item),
             data: item.plotValues
