@@ -30,6 +30,10 @@ CHART_THEME_DARK = "dark"
 CHART_THEME_LIGHT = "light"
 CHART_THEMES = (CHART_THEME_DARK, CHART_THEME_LIGHT)
 OVERLAP_SPREAD_STEP = 0.67
+END_LABEL_X_OFFSET = 0.55
+END_LABEL_RIGHT_PADDING_INCHES = 0.08
+END_LABEL_FONTSIZE = 8
+END_LABEL_MIN_PIXEL_GAP = 1.0
 
 VPN_LINE_COLORS: dict[str, str] = {
     "vpn red shield": "#ff5b27",
@@ -399,7 +403,10 @@ def _render_line_chart(
         raise ValueError(f"Unsupported chart theme: {theme}")
 
     base_width = max(10, len(dates) * 0.4)
-    label_reserve_width = _estimate_label_reserve_width_inches(vpn_names=vpn_names, fontsize=8)
+    label_text_width = _estimate_label_text_width_inches(
+        vpn_names=vpn_names, fontsize=END_LABEL_FONTSIZE
+    )
+    label_reserve_width = label_text_width + END_LABEL_RIGHT_PADDING_INCHES
     width = base_width + label_reserve_width
     height = max(6, len(vpn_names) * 0.35)
 
@@ -461,10 +468,10 @@ def _render_line_chart(
     ax.set_xlim(
         -0.5,
         max(0.0, float(len(dates) - 1))
-        + _estimate_label_reserve_x_units(
+        + _estimate_label_margin_x_units(
             date_count=len(dates),
             plot_width_inches=base_width,
-            label_reserve_width_inches=label_reserve_width,
+            label_text_width_inches=label_text_width,
         ),
     )
 
@@ -479,11 +486,10 @@ def _render_line_chart(
     for spine in ax.spines.values():
         spine.set_color(spine_color)
 
-    _add_end_labels(ax=ax, endpoints=endpoints)
-
     ax.grid(True, color=grid_color, alpha=0.4, linewidth=0.7)
     ax.tick_params(colors=text_color)
     fig.tight_layout()
+    _add_end_labels(ax=ax, endpoints=endpoints)
     fig.savefig(output_path, facecolor=fig.get_facecolor(), bbox_inches="tight")
     plt.close(fig)
 
@@ -594,28 +600,42 @@ def _compute_label_positions(
     return positioned
 
 
-def _estimate_label_reserve_width_inches(*, vpn_names: list[str], fontsize: float) -> float:
+def _estimate_label_text_width_inches(*, vpn_names: list[str], fontsize: float) -> float:
     if not vpn_names:
-        return 1.4
+        return 0.0
 
     font = FontProperties(size=fontsize)
     max_width_points = max(
         TextPath((0, 0), vpn_name, prop=font).get_extents().width
         for vpn_name in vpn_names
     )
-    horizontal_padding_points = 18.0
-    connector_padding_points = 12.0
-    return (max_width_points + horizontal_padding_points + connector_padding_points) / 72.0
+    return max_width_points / 72.0
 
 
-def _estimate_label_reserve_x_units(
-    *, date_count: int, plot_width_inches: float, label_reserve_width_inches: float
+def _estimate_label_margin_x_units(
+    *, date_count: int, plot_width_inches: float, label_text_width_inches: float
 ) -> float:
     data_span = max(1.0, float(date_count - 1))
     usable_plot_width = max(4.0, plot_width_inches - 1.5)
     units_per_inch = data_span / usable_plot_width
-    connector_units = 0.9
-    return max(2.0, label_reserve_width_inches * units_per_inch + connector_units)
+    label_width_units = (
+        label_text_width_inches + END_LABEL_RIGHT_PADDING_INCHES
+    ) * units_per_inch
+    return END_LABEL_X_OFFSET + max(0.2, label_width_units)
+
+
+def _data_y_units_for_pixels(ax: matplotlib.axes.Axes, pixels: float) -> float:
+    y0 = ax.transData.inverted().transform((0.0, 0.0))[1]
+    y1 = ax.transData.inverted().transform((0.0, pixels))[1]
+    return abs(float(y1 - y0))
+
+
+def _label_min_gap_data_units(
+    ax: matplotlib.axes.Axes, *, fontsize: float, pixel_gap: float
+) -> float:
+    ax.figure.canvas.draw()
+    text_height_pixels = fontsize * ax.figure.dpi / 72.0
+    return _data_y_units_for_pixels(ax, text_height_pixels + pixel_gap)
 
 
 def color_for_vpn(vpn_name: str) -> str | None:
@@ -636,12 +656,25 @@ def _add_end_labels(
 
     ymax = ax.get_ylim()[1] - 1.2
     y_values = [endpoint[2] for endpoint in endpoints]
-    label_ys = _compute_label_positions(y_values, lower=1.2, upper=ymax, min_gap=1.2)
-    label_x = max(endpoint[1] for endpoint in endpoints) + 0.55
+    min_gap = _label_min_gap_data_units(
+        ax,
+        fontsize=END_LABEL_FONTSIZE,
+        pixel_gap=END_LABEL_MIN_PIXEL_GAP,
+    )
+    label_ys = _compute_label_positions(y_values, lower=1.2, upper=ymax, min_gap=min_gap)
+    label_x = max(endpoint[1] for endpoint in endpoints) + END_LABEL_X_OFFSET
 
     for (vpn_name, x_end, y_end, color), y_label in zip(endpoints, label_ys, strict=True):
         ax.plot([x_end, label_x - 0.08], [y_end, y_label], color=color, linewidth=0.9, alpha=0.85)
-        ax.text(label_x, y_label, vpn_name, color=color, fontsize=8, va="center", ha="left")
+        ax.text(
+            label_x,
+            y_label,
+            vpn_name,
+            color=color,
+            fontsize=END_LABEL_FONTSIZE,
+            va="center",
+            ha="left",
+        )
 
 
 def generate_historical_line_chart(
