@@ -24,6 +24,8 @@ from vpn_rating_watcher.db.models import (
     VpnSnapshotResult,
 )
 
+ALLOWED_UPDATE_INTERVAL_HOURS = (1, 2, 3, 4, 6, 12, 24)
+
 
 @dataclass(slots=True)
 class ChartLookupResult:
@@ -52,6 +54,12 @@ class LastSnapshotSummary:
     source_name: str
     fetched_at: datetime
     top_rows: list[LastSnapshotRow]
+
+
+@dataclass(slots=True)
+class ChatNotificationSettings:
+    is_active: bool
+    update_interval_hours: int
 
 
 def _format_checked_at_for_outlier(row: LastSnapshotRow) -> str:
@@ -120,6 +128,31 @@ def _format_short_utc_datetime(value: datetime) -> str:
     return f"{value.day} {value.strftime('%b, %H:%M')}"
 
 
+def normalize_update_interval_hours(interval_hours: int) -> int:
+    if interval_hours not in ALLOWED_UPDATE_INTERVAL_HOURS:
+        supported = ", ".join(f"{value}h" for value in ALLOWED_UPDATE_INTERVAL_HOURS)
+        raise ValueError(f"Unsupported update interval: {interval_hours}h. Supported values: {supported}.")
+    return interval_hours
+
+
+def parse_update_interval_hours(raw_value: str | None) -> int:
+    if raw_value is None:
+        raise ValueError("Update interval is required.")
+
+    normalized = raw_value.strip().lower()
+    if normalized.endswith("h"):
+        normalized = normalized[:-1]
+
+    if not normalized.isdigit():
+        raise ValueError("Update interval must look like 1h, 2h, 3h, 4h, 6h, 12h, or 24h.")
+
+    return normalize_update_interval_hours(int(normalized))
+
+
+def format_update_interval_label(interval_hours: int) -> str:
+    return f"{normalize_update_interval_hours(interval_hours)}ч"
+
+
 def upsert_telegram_chat(
     session: Session,
     *,
@@ -128,9 +161,12 @@ def upsert_telegram_chat(
     title: str | None,
     chart_theme: str | None = None,
     is_active: bool = True,
+    update_interval_hours: int | None = None,
 ) -> TelegramChat:
     if chart_theme is not None and chart_theme not in CHART_THEMES:
         raise ValueError(f"Unsupported chart theme: {chart_theme}")
+    if update_interval_hours is not None:
+        update_interval_hours = normalize_update_interval_hours(update_interval_hours)
 
     stmt: Select[tuple[TelegramChat]] = select(TelegramChat).where(
         TelegramChat.chat_id == chat_id
@@ -142,6 +178,8 @@ def upsert_telegram_chat(
         if chart_theme is not None:
             existing.chart_theme = chart_theme
         existing.is_active = is_active
+        if update_interval_hours is not None:
+            existing.update_interval_hours = update_interval_hours
         session.commit()
         session.refresh(existing)
         return existing
@@ -152,6 +190,7 @@ def upsert_telegram_chat(
         title=title,
         chart_theme=chart_theme,
         is_active=is_active,
+        update_interval_hours=update_interval_hours or 1,
     )
     session.add(chat)
     session.commit()
@@ -354,6 +393,9 @@ class TelegramBotService:
                 title=title,
                 chart_theme=None,
                 is_active=effective_is_active,
+                update_interval_hours=(
+                    existing.update_interval_hours if existing is not None else None
+                ),
             )
 
     def set_chat_subscription(
@@ -365,6 +407,9 @@ class TelegramBotService:
         is_active: bool,
     ) -> None:
         with self._session_factory() as session:
+            existing = session.execute(
+                select(TelegramChat).where(TelegramChat.chat_id == chat_id)
+            ).scalar_one_or_none()
             upsert_telegram_chat(
                 session=session,
                 chat_id=chat_id,
@@ -372,6 +417,7 @@ class TelegramBotService:
                 title=title,
                 chart_theme=None,
                 is_active=is_active,
+                update_interval_hours=existing.update_interval_hours if existing is not None else None,
             )
 
     def is_chat_subscribed(self, *, chat_id: str) -> bool:
@@ -401,6 +447,7 @@ class TelegramBotService:
                 title=title,
                 chart_theme=chart_theme,
                 is_active=is_active,
+                update_interval_hours=existing.update_interval_hours if existing is not None else None,
             )
 
     def get_chat_theme(self, *, chat_id: str) -> str | None:
@@ -409,6 +456,52 @@ class TelegramBotService:
                 select(TelegramChat).where(TelegramChat.chat_id == chat_id)
             ).scalar_one_or_none()
             return chat.chart_theme if chat is not None else None
+
+    def set_chat_update_interval(
+        self,
+        *,
+        chat_id: str,
+        chat_type: str | None,
+        title: str | None,
+        update_interval_hours: int,
+    ) -> int:
+        normalized_interval = normalize_update_interval_hours(update_interval_hours)
+        with self._session_factory() as session:
+            existing = session.execute(
+                select(TelegramChat).where(TelegramChat.chat_id == chat_id)
+            ).scalar_one_or_none()
+            is_active = existing.is_active if existing is not None else chat_type == "private"
+            chat = upsert_telegram_chat(
+                session=session,
+                chat_id=chat_id,
+                chat_type=chat_type,
+                title=title,
+                chart_theme=existing.chart_theme if existing is not None else None,
+                is_active=is_active,
+                update_interval_hours=normalized_interval,
+            )
+            return chat.update_interval_hours
+
+    def get_chat_notification_settings(self, *, chat_id: str) -> ChatNotificationSettings:
+        with self._session_factory() as session:
+            chat = session.execute(
+                select(TelegramChat).where(TelegramChat.chat_id == chat_id)
+            ).scalar_one_or_none()
+            if chat is None:
+                return ChatNotificationSettings(is_active=False, update_interval_hours=1)
+            return ChatNotificationSettings(
+                is_active=chat.is_active,
+                update_interval_hours=chat.update_interval_hours,
+            )
+
+    def get_chat_status_text(self, *, chat_id: str) -> str:
+        settings = self.get_chat_notification_settings(chat_id=chat_id)
+        subscription_status = "подписан" if settings.is_active else "не подписан"
+        interval_label = format_update_interval_label(settings.update_interval_hours)
+        return (
+            f"Статус текущего чата: {subscription_status}. "
+            f"Обновления: каждые {interval_label}, пустые окна пропускаются."
+        )
 
     def load_today_or_latest_chart(
         self, *, mode: str = CHART_MODE_DAILY, theme: str = CHART_THEME_DARK

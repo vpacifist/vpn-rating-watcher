@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from aiogram import Bot, Dispatcher, Router
+from aiogram import Bot, Dispatcher, F, Router
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command, CommandStart
+from aiogram.filters.command import CommandObject
 from aiogram.types import (
     BotCommand,
+    CallbackQuery,
     FSInputFile,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -12,7 +14,13 @@ from aiogram.types import (
 )
 from sqlalchemy.orm import Session, sessionmaker
 
-from vpn_rating_watcher.bot.service import TelegramBotService, cleanup_temporary_chart_file
+from vpn_rating_watcher.bot.service import (
+    ALLOWED_UPDATE_INTERVAL_HOURS,
+    TelegramBotService,
+    cleanup_temporary_chart_file,
+    format_update_interval_label,
+    parse_update_interval_hours,
+)
 from vpn_rating_watcher.charts.service import (
     CHART_MODE_MEDIAN_3D,
     CHART_THEME_DARK,
@@ -31,6 +39,8 @@ def _command_entries(*, web_app_url: str | None) -> list[tuple[str, str]]:
         ("theme_dark", "Use dark PNG theme in this chat"),
         ("theme_light", "Use light PNG theme in this chat"),
         ("last", "Show latest snapshot summary"),
+        ("updates", "Choose how often update digests arrive"),
+        ("set_updates", "Set digest interval, e.g. /set_updates 4h"),
         ("subscribe_here", "Subscribe current chat to daily chart"),
         ("unsubscribe_here", "Unsubscribe this chat from daily chart"),
         ("status", "Show current chat subscription status"),
@@ -43,10 +53,7 @@ def _commands_text(*, web_app_url: str | None) -> str:
         f"/{name} - {description}"
         for name, description in _command_entries(web_app_url=web_app_url)
     )
-    return (
-        "Available commands:\n"
-        + command_lines
-    )
+    return "Available commands:\n" + command_lines
 
 
 def _telegram_menu_commands(*, web_app_url: str | None) -> list[BotCommand]:
@@ -82,6 +89,33 @@ def _web_link_markup(web_app_url: str | None) -> InlineKeyboardMarkup | None:
                 )
             ]
         ]
+    )
+
+
+def _updates_markup() -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    current_row: list[InlineKeyboardButton] = []
+    for interval_hours in ALLOWED_UPDATE_INTERVAL_HOURS:
+        current_row.append(
+            InlineKeyboardButton(
+                text=format_update_interval_label(interval_hours),
+                callback_data=f"updates:{interval_hours}",
+            )
+        )
+        if len(current_row) == 4:
+            rows.append(current_row)
+            current_row = []
+    if current_row:
+        rows.append(current_row)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _updates_text(*, current_interval_hours: int) -> str:
+    return (
+        "Частота уведомлений.\n"
+        f"Сейчас: каждые {format_update_interval_label(current_interval_hours)}.\n"
+        "1ч = как сейчас, 2+ч = накопительный обзор изменений за окно.\n"
+        "Пустые окна бот пропускает."
     )
 
 
@@ -197,6 +231,62 @@ def build_router(service: TelegramBotService, *, web_app_url: str | None = None)
         await _remember_chat(message)
         await message.answer(service.load_last_snapshot_text(), reply_markup=web_markup)
 
+    @local_router.message(Command("updates"))
+    async def updates_handler(message: Message) -> None:
+        await _remember_chat(message)
+        settings = service.get_chat_notification_settings(chat_id=str(message.chat.id))
+        await message.answer(
+            _updates_text(current_interval_hours=settings.update_interval_hours),
+            reply_markup=_updates_markup(),
+        )
+
+    @local_router.message(Command("set_updates"))
+    async def set_updates_handler(message: Message, command: CommandObject) -> None:
+        await _remember_chat(message)
+        try:
+            interval_hours = parse_update_interval_hours(command.args)
+        except ValueError as exc:
+            await message.answer(str(exc))
+            return
+
+        updated_interval = service.set_chat_update_interval(
+            chat_id=str(message.chat.id),
+            chat_type=message.chat.type,
+            title=_chat_title(message),
+            update_interval_hours=interval_hours,
+        )
+        await message.answer(
+            "Частота обновлений сохранена: "
+            f"каждые {format_update_interval_label(updated_interval)}.\n"
+            "Пустые окна бот пропускает."
+        )
+
+    @local_router.callback_query(F.data.startswith("updates:"))
+    async def updates_callback_handler(callback: CallbackQuery) -> None:
+        if callback.message is None or callback.data is None:
+            await callback.answer()
+            return
+
+        try:
+            interval_hours = parse_update_interval_hours(callback.data.split(":", 1)[1])
+        except ValueError as exc:
+            await callback.answer(str(exc), show_alert=True)
+            return
+
+        updated_interval = service.set_chat_update_interval(
+            chat_id=str(callback.message.chat.id),
+            chat_type=callback.message.chat.type,
+            title=callback.message.chat.title,
+            update_interval_hours=interval_hours,
+        )
+        await callback.message.edit_text(
+            _updates_text(current_interval_hours=updated_interval),
+            reply_markup=_updates_markup(),
+        )
+        await callback.answer(
+            f"Обновления: каждые {format_update_interval_label(updated_interval)}."
+        )
+
     @local_router.message(Command("theme_dark"))
     async def theme_dark_handler(message: Message) -> None:
         service.set_chat_theme(
@@ -255,9 +345,8 @@ def build_router(service: TelegramBotService, *, web_app_url: str | None = None)
 
     @local_router.message(Command("status"))
     async def status_handler(message: Message) -> None:
-        is_subscribed = service.is_chat_subscribed(chat_id=str(message.chat.id))
-        status_text = "подписан" if is_subscribed else "не подписан"
-        await message.answer(f"Статус текущего чата: {status_text}.")
+        await _remember_chat(message)
+        await message.answer(service.get_chat_status_text(chat_id=str(message.chat.id)))
 
     return local_router
 
