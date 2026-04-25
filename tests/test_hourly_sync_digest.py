@@ -11,7 +11,7 @@ from vpn_rating_watcher.bot.service import TelegramBotService
 from vpn_rating_watcher.charts.service import ChartGenerationResult
 from vpn_rating_watcher.db.base import Base
 from vpn_rating_watcher.db.models import TelegramChat
-from vpn_rating_watcher.jobs.hourly_sync import run_hourly_sync_job
+from vpn_rating_watcher.jobs.hourly_sync import SnapshotChangeLine, _format_change_line, run_hourly_sync_job
 from vpn_rating_watcher.scraper.models import NormalizedRow, ScrapeResult
 
 
@@ -114,7 +114,8 @@ def test_hourly_sync_sends_immediately_for_hourly_chat() -> None:
 
     assert result.notified_count == 1
     assert len(MESSAGES) == 1
-    assert "последний 1 час" in MESSAGES[0]
+    assert "VPN Rating Watcher · обновление за 1ч" in MESSAGES[0]
+    assert "1 снимок" in MESSAGES[0]
 
 
 def test_hourly_sync_accumulates_digest_for_four_hour_chat() -> None:
@@ -163,6 +164,55 @@ def test_hourly_sync_accumulates_digest_for_four_hour_chat() -> None:
         assert chat.last_notified_at is not None
 
     assert len(MESSAGES) == 1
-    assert "последние 4ч" in MESSAGES[0]
-    assert "Новых snapshot в обзоре: 4" in MESSAGES[0]
-    assert "changed=1" in MESSAGES[0]
+    assert "VPN Rating Watcher · обзор за 4ч" in MESSAGES[0]
+    assert "4 снимка" in MESSAGES[0]
+    assert "Итого: 1 изменение" in MESSAGES[0]
+    assert "• AlphaVPN: score 32→33 (+1), место #1" in MESSAGES[0]
+    assert "#1→#1" not in MESSAGES[0]
+    assert "Тех: snapshot" in MESSAGES[0]
+    assert "changed=" not in MESSAGES[0]
+
+
+def test_hourly_sync_formats_rank_and_membership_changes_for_digest() -> None:
+    assert (
+        _format_change_line(
+            SnapshotChangeLine(
+                kind="changed",
+                vpn_name="BetaVPN",
+                sort_rank=2,
+                old_rank=3,
+                new_rank=2,
+                old_score=24,
+                new_score=24,
+            )
+        )
+        == "BetaVPN: score 24→24 (0), #3→#2"
+    )
+    assert (
+        _format_change_line(
+            SnapshotChangeLine(
+                kind="new",
+                vpn_name="GammaVPN",
+                sort_rank=9,
+                old_rank=None,
+                new_rank=9,
+                old_score=None,
+                new_score=18,
+            )
+        )
+        == "Новый: #9 GammaVPN, score 18"
+    )
+    assert (
+        _format_change_line(
+            SnapshotChangeLine(
+                kind="removed",
+                vpn_name="OldVPN",
+                sort_rank=12,
+                old_rank=12,
+                new_rank=None,
+                old_score=14,
+                new_score=None,
+            )
+        )
+        == "Удалён: OldVPN, было #12, score 14"
+    )

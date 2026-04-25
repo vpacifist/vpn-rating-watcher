@@ -51,6 +51,7 @@ class NotificationDigestSummary:
     new_count: int
     removed_count: int
     top_changes: list[str]
+    total_change_count: int
     snapshot_count: int
     window_start: datetime
     window_end: datetime
@@ -141,16 +142,68 @@ def _snapshot_scores(session: Session, snapshot_id: int) -> dict[str, tuple[int,
     return {name: (rank, score) for name, rank, score in rows}
 
 
+def _format_signed_delta(old_value: int | None, new_value: int | None) -> str:
+    if old_value is None or new_value is None:
+        return ""
+    delta = new_value - old_value
+    if delta > 0:
+        return f"(+{delta})"
+    return f"({delta})"
+
+
 def _format_change_line(change: SnapshotChangeLine) -> str:
     if change.kind == "changed":
-        return (
-            f"chg: {change.vpn_name} "
-            f"#{change.old_rank}->{change.new_rank} "
-            f"score {change.old_score}->{change.new_score}"
+        rank_part = (
+            f"#{change.old_rank}→#{change.new_rank}"
+            if change.old_rank != change.new_rank
+            else f"место #{change.new_rank}"
         )
+        score_delta = _format_signed_delta(change.old_score, change.new_score)
+        return f"{change.vpn_name}: score {change.old_score}→{change.new_score} {score_delta}, {rank_part}"
     if change.kind == "new":
-        return f"new: #{change.new_rank} {change.vpn_name} ({change.new_score})"
-    return f"removed: #{change.old_rank} {change.vpn_name} ({change.old_score})"
+        return f"Новый: #{change.new_rank} {change.vpn_name}, score {change.new_score}"
+    return f"Удалён: {change.vpn_name}, было #{change.old_rank}, score {change.old_score}"
+
+
+def _plural_ru(value: int, one: str, few: str, many: str) -> str:
+    last_two_digits = value % 100
+    if 11 <= last_two_digits <= 14:
+        return many
+    last_digit = value % 10
+    if last_digit == 1:
+        return one
+    if 2 <= last_digit <= 4:
+        return few
+    return many
+
+
+def _format_snapshot_count(value: int) -> str:
+    return f"{value} {_plural_ru(value, 'снимок', 'снимка', 'снимков')}"
+
+
+def _format_change_count(value: int) -> str:
+    return f"{value} {_plural_ru(value, 'изменение', 'изменения', 'изменений')}"
+
+
+def _format_digest_window(start: datetime, end: datetime) -> str:
+    if start.date() == end.date():
+        return f"{start.strftime('%d.%m %H:%M')}–{end.strftime('%H:%M UTC')}"
+    return f"{start.strftime('%d.%m %H:%M')}–{end.strftime('%d.%m %H:%M UTC')}"
+
+
+def _format_total_line(digest: NotificationDigestSummary) -> str:
+    details: list[str] = []
+    if digest.new_count:
+        details.append(f"{digest.new_count} {_plural_ru(digest.new_count, 'новый', 'новых', 'новых')}")
+    if digest.removed_count:
+        details.append(
+            f"{digest.removed_count} {_plural_ru(digest.removed_count, 'удалённый', 'удалённых', 'удалённых')}"
+        )
+
+    total_line = f"Итого: {_format_change_count(digest.total_change_count)}"
+    if details:
+        total_line = f"{total_line} ({', '.join(details)})"
+    return total_line
 
 
 def _diff_snapshots(
@@ -297,6 +350,7 @@ def _aggregate_notification_summary(
             new_count=diff.new_count,
             removed_count=diff.removed_count,
             top_changes=diff.top_changes,
+            total_change_count=diff.changed_count + diff.new_count + diff.removed_count,
             snapshot_count=1,
             window_start=current_fetched_at,
             window_end=current_fetched_at,
@@ -350,6 +404,7 @@ def _aggregate_notification_summary(
             new_count=0,
             removed_count=0,
             top_changes=[],
+            total_change_count=0,
             snapshot_count=len(pending_snapshots),
             window_start=_ensure_utc(pending_snapshots[0].fetched_at),
             window_end=current_fetched_at,
@@ -369,6 +424,7 @@ def _aggregate_notification_summary(
         new_count=len(new_names),
         removed_count=len(removed_names),
         top_changes=[_format_change_line(change) for change in ordered_changes[:5]],
+        total_change_count=len(ordered_changes),
         snapshot_count=len(pending_snapshots),
         window_start=_ensure_utc(pending_snapshots[0].fetched_at),
         window_end=current_fetched_at,
@@ -407,33 +463,22 @@ def _build_update_message(
     digest: NotificationDigestSummary,
     interval_hours: int,
 ) -> str:
-    title = "обновление за последний 1 час" if interval_hours == 1 else (
-        f"обзор за последние {format_update_interval_label(interval_hours)}"
-    )
+    title_kind = "обновление" if interval_hours == 1 else "обзор"
+    interval_label = format_update_interval_label(interval_hours)
     lines = [
-        f"✅ VPN Rating Watcher: {title}",
-        (
-            f"Окно: {digest.window_start.strftime('%Y-%m-%d %H:%M UTC')} - "
-            f"{digest.window_end.strftime('%Y-%m-%d %H:%M UTC')}"
-        ),
-        (
-            "Изменения: "
-            f"changed={digest.changed_count}, new={digest.new_count}, removed={digest.removed_count}"
-        ),
+        f"✅ VPN Rating Watcher · {title_kind} за {interval_label}",
+        f"{_format_digest_window(digest.window_start, digest.window_end)} · {_format_snapshot_count(digest.snapshot_count)}",
+        "",
+        _format_total_line(digest),
     ]
 
     if digest.top_changes:
-        lines.append("Главное за период:")
-        lines.extend(f"- {line}" for line in digest.top_changes)
+        lines.extend(f"• {line}" for line in digest.top_changes)
+        hidden_change_count = digest.total_change_count - len(digest.top_changes)
+        if hidden_change_count > 0:
+            lines.append(f"…и ещё {_format_change_count(hidden_change_count)}")
 
-    lines.extend(
-        [
-            "Технически:",
-            f"- Snapshot ID: {saved.snapshot_id}",
-            f"- Chart ID: {chart.chart_id} ({chart.end_date.isoformat()})",
-            f"- Новых snapshot в обзоре: {digest.snapshot_count}",
-        ]
-    )
+    lines.extend(["", f"Тех: snapshot {saved.snapshot_id} · chart {chart.chart_id}"])
     return "\n".join(lines)
 
 
