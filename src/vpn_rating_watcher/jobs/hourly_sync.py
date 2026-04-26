@@ -143,13 +143,18 @@ def _snapshot_scores(session: Session, snapshot_id: int) -> dict[str, tuple[int,
     return {name: (rank, score) for name, rank, score in rows}
 
 
+def _format_rank_change(old_rank: int | None, new_rank: int | None) -> str:
+    if old_rank == new_rank:
+        return f"#{new_rank}"
+    if old_rank is not None and new_rank is not None:
+        direction = "⬆️" if new_rank < old_rank else "🔻"
+        return f"#{old_rank}{direction}#{new_rank}"
+    return f"#{new_rank}"
+
+
 def _format_change_line(change: SnapshotChangeLine) -> str:
     if change.kind == "changed":
-        rank_part = (
-            f"#{change.old_rank}→#{change.new_rank}"
-            if change.old_rank != change.new_rank
-            else f"#{change.new_rank}"
-        )
+        rank_part = _format_rank_change(change.old_rank, change.new_rank)
         return f"{rank_part} {change.vpn_name} ({change.old_score}→{change.new_score})"
     if change.kind == "new":
         return f"Новый: #{change.new_rank} {change.vpn_name}, score {change.new_score}"

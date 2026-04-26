@@ -187,7 +187,21 @@ def test_hourly_sync_formats_rank_and_membership_changes_for_digest() -> None:
                 new_score=24,
             )
         )
-        == "#3→#2 BetaVPN (24→24)"
+        == "#3⬆️#2 BetaVPN (24→24)"
+    )
+    assert (
+        _format_change_line(
+            SnapshotChangeLine(
+                kind="changed",
+                vpn_name="DeltaVPN",
+                sort_rank=7,
+                old_rank=6,
+                new_rank=7,
+                old_score=24,
+                new_score=23,
+            )
+        )
+        == "#6🔻#7 DeltaVPN (24→23)"
     )
     assert (
         _format_change_line(
@@ -235,4 +249,4 @@ def test_hourly_sync_keeps_all_digest_changes_without_hidden_tail() -> None:
     message = "\n".join(f"• {_format_change_line(change)}" for change in changes)
 
     assert "…и ещё" not in message
-    assert "• #7→#6 VPN 6 (26→27)" in message
+    assert "• #7⬆️#6 VPN 6 (26→27)" in message
