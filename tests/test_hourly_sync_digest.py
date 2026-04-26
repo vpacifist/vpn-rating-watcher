@@ -167,9 +167,10 @@ def test_hourly_sync_accumulates_digest_for_four_hour_chat() -> None:
     assert "VPN Rating Watcher · обзор за 4ч" in MESSAGES[0]
     assert "4 снимка" in MESSAGES[0]
     assert "Итого: 1 изменение" in MESSAGES[0]
-    assert "• AlphaVPN: score 32→33 (+1), место #1" in MESSAGES[0]
+    assert "• #1 AlphaVPN (32→33)" in MESSAGES[0]
     assert "#1→#1" not in MESSAGES[0]
-    assert "Тех: snapshot" in MESSAGES[0]
+    assert "<i>snapshot" in MESSAGES[0]
+    assert "Тех:" not in MESSAGES[0]
     assert "changed=" not in MESSAGES[0]
 
 
@@ -186,7 +187,7 @@ def test_hourly_sync_formats_rank_and_membership_changes_for_digest() -> None:
                 new_score=24,
             )
         )
-        == "BetaVPN: score 24→24 (0), #3→#2"
+        == "#3→#2 BetaVPN (24→24)"
     )
     assert (
         _format_change_line(
@@ -216,3 +217,22 @@ def test_hourly_sync_formats_rank_and_membership_changes_for_digest() -> None:
         )
         == "Удалён: OldVPN, было #12, score 14"
     )
+
+
+def test_hourly_sync_keeps_all_digest_changes_without_hidden_tail() -> None:
+    changes = [
+        SnapshotChangeLine(
+            kind="changed",
+            vpn_name=f"VPN {index}",
+            sort_rank=index,
+            old_rank=index + 1,
+            new_rank=index,
+            old_score=20 + index,
+            new_score=21 + index,
+        )
+        for index in range(1, 7)
+    ]
+    message = "\n".join(f"• {_format_change_line(change)}" for change in changes)
+
+    assert "…и ещё" not in message
+    assert "• #7→#6 VPN 6 (26→27)" in message

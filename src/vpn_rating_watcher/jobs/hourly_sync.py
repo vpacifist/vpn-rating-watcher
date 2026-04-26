@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 import threading
 from collections.abc import Awaitable, Callable
@@ -142,24 +143,14 @@ def _snapshot_scores(session: Session, snapshot_id: int) -> dict[str, tuple[int,
     return {name: (rank, score) for name, rank, score in rows}
 
 
-def _format_signed_delta(old_value: int | None, new_value: int | None) -> str:
-    if old_value is None or new_value is None:
-        return ""
-    delta = new_value - old_value
-    if delta > 0:
-        return f"(+{delta})"
-    return f"({delta})"
-
-
 def _format_change_line(change: SnapshotChangeLine) -> str:
     if change.kind == "changed":
         rank_part = (
             f"#{change.old_rank}→#{change.new_rank}"
             if change.old_rank != change.new_rank
-            else f"место #{change.new_rank}"
+            else f"#{change.new_rank}"
         )
-        score_delta = _format_signed_delta(change.old_score, change.new_score)
-        return f"{change.vpn_name}: score {change.old_score}→{change.new_score} {score_delta}, {rank_part}"
+        return f"{rank_part} {change.vpn_name} ({change.old_score}→{change.new_score})"
     if change.kind == "new":
         return f"Новый: #{change.new_rank} {change.vpn_name}, score {change.new_score}"
     return f"Удалён: {change.vpn_name}, было #{change.old_rank}, score {change.old_score}"
@@ -230,7 +221,7 @@ def _diff_snapshots(
             changed_count=0,
             new_count=len(new_details),
             removed_count=0,
-            top_changes=[_format_change_line(change) for change in new_details[:5]],
+            top_changes=[_format_change_line(change) for change in new_details],
             changed_details=[],
             new_details=new_details,
             removed_details=[],
@@ -291,7 +282,7 @@ def _diff_snapshots(
 
     top_changes = [
         _format_change_line(change)
-        for change in (changed_details + new_details + removed_details)[:5]
+        for change in (changed_details + new_details + removed_details)
     ]
 
     return SnapshotDiffSummary(
@@ -423,7 +414,7 @@ def _aggregate_notification_summary(
         changed_count=len(changed_names),
         new_count=len(new_names),
         removed_count=len(removed_names),
-        top_changes=[_format_change_line(change) for change in ordered_changes[:5]],
+        top_changes=[_format_change_line(change) for change in ordered_changes],
         total_change_count=len(ordered_changes),
         snapshot_count=len(pending_snapshots),
         window_start=_ensure_utc(pending_snapshots[0].fetched_at),
@@ -434,7 +425,7 @@ def _aggregate_notification_summary(
 async def _send_text(*, token: str, chat_id: str, text: str) -> None:
     bot = Bot(token=token)
     try:
-        await bot.send_message(chat_id=chat_id, text=text)
+        await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
     finally:
         await bot.session.close()
 
@@ -473,12 +464,9 @@ def _build_update_message(
     ]
 
     if digest.top_changes:
-        lines.extend(f"• {line}" for line in digest.top_changes)
-        hidden_change_count = digest.total_change_count - len(digest.top_changes)
-        if hidden_change_count > 0:
-            lines.append(f"…и ещё {_format_change_count(hidden_change_count)}")
+        lines.extend(f"• {html.escape(line)}" for line in digest.top_changes)
 
-    lines.extend(["", f"Тех: snapshot {saved.snapshot_id} · chart {chart.chart_id}"])
+    lines.extend(["", f"<i>snapshot {saved.snapshot_id} · chart {chart.chart_id}</i>"])
     return "\n".join(lines)
 
 
