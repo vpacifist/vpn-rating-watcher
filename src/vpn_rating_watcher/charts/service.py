@@ -43,7 +43,7 @@ VPN_LINE_COLORS: dict[str, str] = {
     "plusone vpn": "#FF1F4B",
     "vpn generator": "#A3D9F9",
     "amneziavpn": "#FBB26A",
-    "durev vpn": "#3B82F6",
+    "durev vpn": "#F3C8B7",
     "наружу": "#FFD600",
     "tunnelbear": "#C08D4A",
 }
